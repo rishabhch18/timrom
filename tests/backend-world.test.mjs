@@ -221,6 +221,10 @@ test("lending preserves ownership, reclaim releases the occupied seat safely", (
   w.handle(b, "invite", { code: w.home(r.home).invite });
   const item = w.snapshot(b).items.find((i) => i.asset === "chair");
   w.handle(b, "shareItem", { item: item.id, home: r.home, mode: "lend" });
+  w.handle(a, "offerDecision", {
+    offer: w.get("SELECT id FROM item_offers WHERE item=?", item.id).id,
+    decision: "accept",
+  });
   w.handle(a, "place", { item: item.id, room: r.id, x: 0, y: 0 });
   w.handle(a, "interact", {
     item: w.get("SELECT id FROM items WHERE room=? AND x=0 AND y=0", r.id).id,
@@ -243,6 +247,10 @@ test("donation permanently transfers ownership and prevents reclaim or duplicate
   w.handle(b, "invite", { code: w.home(r.home).invite });
   const item = w.snapshot(b).items[0];
   w.handle(b, "shareItem", { item: item.id, home: r.home, mode: "donate" });
+  w.handle(a, "offerDecision", {
+    offer: w.get("SELECT id FROM item_offers WHERE item=?", item.id).id,
+    decision: "accept",
+  });
   assert.equal(
     w.get("SELECT owner_type FROM items WHERE id=?", item.id).owner_type,
     "home",
@@ -339,6 +347,10 @@ test("home bans return loans and prevent rejoining", (t) => {
   w.handle(b, "invite", { code: w.home(r.home).invite });
   const item = w.snapshot(b).items[0];
   w.handle(b, "shareItem", { item: item.id, home: r.home, mode: "lend" });
+  w.handle(a, "offerDecision", {
+    offer: w.get("SELECT id FROM item_offers WHERE item=?", item.id).id,
+    decision: "accept",
+  });
   w.handle(a, "ban", { home: r.home, user: b });
   assert.equal(w.presence.get(b).room, null);
   assert.equal(w.get("SELECT loan FROM items WHERE id=?", item.id).loan, null);

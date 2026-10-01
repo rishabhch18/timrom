@@ -1,3 +1,5 @@
+import { diffState } from "../src/shared/state-patch.mjs";
+import { MediaBridge } from "./media.mjs";
 import http from "node:http";
 import { WebSocketServer } from "ws";
 import { mkdirSync, existsSync, readFileSync } from "node:fs";
@@ -16,6 +18,8 @@ export function startServer({
   const world = new World(dbPath, () => Date.now(), { seed }),
     clients = new Map();
   const accounts = new Accounts(world);
+  const media = new MediaBridge(world);
+  world.mediaMode = media.enabled ? "livekit" : "local-peer-mesh";
   const send = (ws, o) => {
     if (ws.readyState === 1) ws.send(JSON.stringify(o));
   };
@@ -85,7 +89,16 @@ export function startServer({
     }
   });
   const wss = new WebSocketServer({ server, maxPayload: 20000 });
+  let broadcastTimer;
   function broadcast() {
+    if (!broadcastTimer)
+      broadcastTimer = setTimeout(() => {
+        broadcastTimer = null;
+        broadcastNow();
+      }, 16);
+  }
+  function broadcastNow() {
+    world.readCache = new Map();
     for (const [ws, c] of clients)
       if (c.user)
         try {
@@ -94,10 +107,37 @@ export function startServer({
             ws.close();
             continue;
           }
-          send(ws, { type: "state", data: world.snapshot(c.user) });
+          const data = {
+            ...world.snapshot(c.user),
+            deviceActive: world.presence.get(c.user)?.worldClient === c.id,
+          };
+          delete data.me.seconds;
+          const signature = JSON.stringify({
+            ...data,
+            serverTime: Math.floor(data.serverTime / 60000),
+          });
+          if (signature !== c.lastSnapshot) {
+            c.lastSnapshot = signature;
+            if (ws.bufferedAmount > 2 * 1024 * 1024) {
+              ws.close(1013, "Reconnect to refresh world state");
+              continue;
+            }
+            const full = JSON.stringify({ type: "state", data });
+            const patch =
+              c.patches && c.lastState
+                ? JSON.stringify({
+                    type: "patch",
+                    data: diffState(c.lastState, data),
+                  })
+                : null;
+            if (ws.readyState === 1)
+              ws.send(patch && patch.length < full.length ? patch : full);
+            c.lastState = JSON.parse(full).data;
+          }
         } catch (e) {
           send(ws, { type: "error", message: e.message });
         }
+    world.readCache = null;
   }
   wss.on("connection", (ws, req) => {
     const origin = req.headers.origin;
@@ -111,7 +151,7 @@ export function startServer({
       if (!c.user) ws.close();
     }, 5000);
     ws.on("pong", () => (c.alive = true));
-    ws.on("message", (raw) => {
+    ws.on("message", async (raw) => {
       let m;
       try {
         m = JSON.parse(raw);
@@ -125,8 +165,9 @@ export function startServer({
           }
           c.user = id;
           c.token = m.token;
+          c.patches = m.patches === true;
           clearTimeout(timeout);
-          world.connect(id);
+          world.attachDevice(id, c.id);
           broadcast();
           return;
         }
@@ -153,7 +194,35 @@ export function startServer({
               });
           return;
         }
-        world.handle(c.user, m.type, m.data, c.id);
+        if (m.type === "mediaToken") {
+          const data = await media.token(c.user, c.id);
+          if (world.auth(c.token) !== c.user) throw Error("Session ended.");
+          send(ws, { type: "ack", id: m.id, data });
+          return;
+        }
+        const result = world.handle(c.user, m.type, m.data, c.id);
+        if (m.type === "activitySummary") {
+          send(ws, { type: "ack", id: m.id, data: result });
+          return;
+        }
+        if (media.enabled) {
+          if (m.type === "voice")
+            try {
+              await media.reconcile();
+            } catch {
+              const p = world.presence.get(c.user);
+              if (p) {
+                p.voice = false;
+                p.voiceClient = null;
+                p.video = false;
+                p.muted = true;
+              }
+              throw Error(
+                "The media service is unavailable. Text chat remains available.",
+              );
+            }
+          else void media.reconcile().catch(() => {});
+        }
         send(ws, { type: "ack", id: m.id });
         broadcast();
       } catch (e) {
@@ -169,7 +238,7 @@ export function startServer({
           p.voiceClient = null;
           p.video = false;
         }
-        world.disconnect(c.user);
+        world.detachDevice(c.user, c.id);
       }
       clients.delete(ws);
       broadcast();
@@ -177,6 +246,7 @@ export function startServer({
   });
   const tick = setInterval(() => {
       world.tick();
+      if (media.enabled) void media.reconcile().catch(() => {});
       broadcast();
     }, 1000),
     motion = setInterval(() => {
@@ -201,6 +271,7 @@ export function startServer({
     world,
     wss,
     close: async () => {
+      clearTimeout(broadcastTimer);
       clearInterval(tick);
       clearInterval(motion);
       clearInterval(ping);
@@ -218,7 +289,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const app = startServer({ seed: false });
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => app.close().then(() => process.exit(0)));
-  console.log(
-    "One World server: http://127.0.0.1:" + (process.env.PORT || 3012),
-  );
+  console.log("Timrom server: http://127.0.0.1:" + (process.env.PORT || 3012));
 }

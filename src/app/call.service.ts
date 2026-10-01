@@ -1,3 +1,4 @@
+import { SfuTransport } from "./sfu-transport";
 import { Injectable, effect, inject, signal, untracked } from "@angular/core";
 import { SocialService } from "./social.service";
 interface Peer {
@@ -17,6 +18,92 @@ export class CallService {
   readonly deafened = signal(false);
   readonly local = signal<MediaStream | null>(null);
   readonly remotes = signal<{ id: string; stream: MediaStream }[]>([]);
+  readonly devices = signal<MediaDeviceInfo[]>([]);
+  readonly microphone = signal("");
+  readonly cameraDevice = signal("");
+  readonly lowBandwidth = signal(false);
+  private sfu?: SfuTransport;
+  private sfuRoom = "";
+  private sfuBusy = false;
+  private sfuAgain = false;
+  isSfu() {
+    return this.api.state()?.capabilities.media === "livekit";
+  }
+  async refreshDevices() {
+    try {
+      this.devices.set(await navigator.mediaDevices.enumerateDevices());
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+  async chooseDevice(kind: "audio" | "video", id: string) {
+    if (kind === "audio") this.microphone.set(id);
+    else this.cameraDevice.set(id);
+    if (kind === "audio" && !this.muted()) {
+      await this.toggleMic();
+      this.local()
+        ?.getAudioTracks()
+        .forEach((t) => {
+          t.stop();
+          this.local()?.removeTrack(t);
+        });
+      await this.toggleMic();
+    }
+    if (kind === "video" && this.camera()) {
+      await this.toggleCamera();
+      await this.toggleCamera();
+    }
+  }
+  private async syncSfu() {
+    if (!this.isSfu() || !this.joined()) return;
+    if (this.sfuBusy) {
+      this.sfuAgain = true;
+      return;
+    }
+    const room = this.api.state()?.room?.id;
+    if (!room) return;
+    this.sfuBusy = true;
+    const version = this.version;
+    try {
+      if (this.sfuRoom !== room) {
+        const data = await this.api.command("mediaToken");
+        if (version !== this.version) return;
+        this.sfu ??= new SfuTransport(
+          (id, stream) => {
+            if (!id) {
+              this.remotes.set([]);
+              return;
+            }
+            this.remotes.update((rs) => [
+              ...rs.filter((r) => r.id !== id),
+              ...(stream ? [{ id, stream }] : []),
+            ]);
+          },
+          (e) => {
+            this.fail(e);
+            this.stop();
+            void this.api.command("voice", { join: false }).catch(() => {});
+          },
+        );
+        await this.sfu.connect(data.url, data.token);
+        if (version !== this.version) return;
+        this.sfuRoom = room;
+      }
+      await this.sfu?.update(this.local(), this.muted(), this.camera());
+    } catch (e) {
+      if (version === this.version) {
+        this.fail(e);
+        this.stop();
+        void this.api.command("voice", { join: false }).catch(() => {});
+      }
+    } finally {
+      this.sfuBusy = false;
+      if (this.sfuAgain) {
+        this.sfuAgain = false;
+        void this.syncSfu();
+      }
+    }
+  }
   private peers = new Map<string, Peer>();
   private room = "";
   private paused = false;
@@ -35,7 +122,7 @@ export class CallService {
       const s = this.api.state(),
         status = this.api.status();
       untracked(() => {
-        if (!s || status !== "Connected") {
+        if (!s || s.deviceActive === false || status !== "Connected") {
           this.stop();
           return;
         }
@@ -45,6 +132,10 @@ export class CallService {
           return;
         }
         if (this.room !== r.id) {
+          this.version++;
+          this.sfu?.disconnect();
+          this.sfuRoom = "";
+          this.remotes.set([]);
           this.closePeers();
           this.room = r.id;
           this.attempted = "";
@@ -55,7 +146,7 @@ export class CallService {
           return;
         }
         if (this.joined() && me?.voice) {
-          if (!me.speaker && !this.muted()) {
+          if ((!me.speaker || me.muted) && !this.muted()) {
             this.local()
               ?.getAudioTracks()
               .forEach((t) => (t.enabled = false));
@@ -66,7 +157,8 @@ export class CallService {
             .map((p) => p.id);
           for (const id of this.peers.keys())
             if (!ids.includes(id)) this.closePeer(id);
-          ids.forEach((id) => this.ensure(id));
+          if (this.isSfu()) void this.syncSfu();
+          else ids.forEach((id) => this.ensure(id));
         } else if (this.joined() && !me?.voice && !this.busy()) {
           this.stop();
         }
@@ -93,6 +185,9 @@ export class CallService {
   }
   private stop() {
     this.version++;
+    this.sfu?.disconnect();
+    this.sfuRoom = "";
+    this.remotes.set([]);
     this.local()
       ?.getTracks()
       .forEach((t) => t.stop());
@@ -209,6 +304,7 @@ export class CallService {
       this.local.set(new MediaStream());
       this.joined.set(true);
       this.muted.set(true);
+      await this.syncSfu();
     } catch (e) {
       this.fail(e);
     } finally {
@@ -242,7 +338,9 @@ export class CallService {
       const next = !this.muted();
       if (!next && !this.local()?.getAudioTracks().length) {
         const acquired = await navigator.mediaDevices.getUserMedia({
-          audio: true,
+          audio: this.microphone()
+            ? { deviceId: { exact: this.microphone() } }
+            : true,
           video: false,
         });
         if (version !== this.version) {
@@ -271,6 +369,7 @@ export class CallService {
         .forEach((t) => (t.enabled = !next));
       this.muted.set(next);
       if (!next) this.deafened.set(false);
+      await this.syncSfu();
     } catch (e) {
       this.local()
         ?.getAudioTracks()
@@ -290,7 +389,14 @@ export class CallService {
       if (next) {
         const acquired = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { width: 640, height: 360 },
+          video: {
+            width: this.lowBandwidth() ? 320 : 640,
+            height: this.lowBandwidth() ? 180 : 360,
+            frameRate: this.lowBandwidth() ? 12 : 24,
+            ...(this.cameraDevice()
+              ? { deviceId: { exact: this.cameraDevice() } }
+              : {}),
+          },
         });
         if (version !== this.version) {
           acquired.getTracks().forEach((t) => t.stop());
@@ -335,6 +441,7 @@ export class CallService {
         });
       }
       this.camera.set(next);
+      await this.syncSfu();
     } catch (e) {
       this.local()
         ?.getVideoTracks()

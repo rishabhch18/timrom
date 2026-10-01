@@ -386,12 +386,17 @@ export function installSocial(World) {
       const target = this.presence.get(d.user);
       check(target?.room === p.room, "User is not in this room.");
       target.speaker = !!d.allowed;
+      if (d.allowed) target.moderatorMuted = false;
       target.hand = false;
       if (!d.allowed) target.muted = true;
       return;
     }
     if (type === "voice" && d.join) {
       const r = this.room(id, p.room);
+      check(
+        !p.moderatorMuted || d.muted !== false,
+        "A moderator muted you. Ask to speak again.",
+      );
       check(r.voice_mode !== "disabled", "Voice is disabled in this room.");
       if (
         r.voice_mode === "moderated" &&
@@ -457,8 +462,8 @@ export function installSocial(World) {
       );
     }
     s.capabilities = {
-      media: "local-peer-mesh",
-      localCallLimit: 6,
+      media: this.mediaMode || "local-peer-mesh",
+      localCallLimit: this.mediaMode === "livekit" ? 100 : 6,
       productionMediaReady: false,
     };
     return s;

@@ -51,13 +51,13 @@ test("last doorway slot is rechecked after a route begins; zero permits entry; l
   const { w, a, b, rooms } = fixture(t);
   const next = rooms[1];
   w.run("UPDATE rooms SET capacity=1 WHERE id=?", next.id);
-  w.handle(a, "move", { room: next.id, x: 5, y: 7 });
+  w.handle(a, "move", { room: next.id, x: 10, y: 7 });
   w.join(b, next.id);
   finish(w);
   assert.equal(w.presence.get(a).room, rooms[0].id);
   assert.match(w.snapshot(a).notice, /blocked/);
   w.run("UPDATE rooms SET capacity=0 WHERE id=?", next.id);
-  w.handle(a, "move", { room: next.id, x: 5, y: 7 });
+  w.handle(a, "move", { room: next.id, x: 10, y: 7 });
   finish(w);
   assert.equal(w.count(next.id), 2);
   w.run("UPDATE rooms SET locked=1 WHERE id=?", rooms[0].id);
@@ -245,10 +245,18 @@ test("mobile OTP sign-in and linking second contact preserve identity and owners
     { challenge: q.challenge, code: q.developmentCode },
     "test",
   );
+  const identity = await accounts.handle("reauth", {}, "test", session.token);
+  const recent = await accounts.handle(
+    "verify",
+    { challenge: identity.challenge, code: identity.developmentCode },
+    "test",
+    session.token,
+  );
   const link = await accounts.handle(
     "link",
     {
       kind: "email",
+      reauth: recent.reauth,
       contact: "mobile@example.test",
       password: "test-link-password",
     },
@@ -303,7 +311,7 @@ test("a full destination call disconnects voice without blocking unlimited room 
   }
   w.handle(a, "voice", { join: true, muted: false, video: true }, "caller");
   w.handle(a, "voiceFollow", { enabled: true });
-  w.handle(a, "move", { room: rooms[1].id, x: 5, y: 7 });
+  w.handle(a, "move", { room: rooms[1].id, x: 10, y: 7 });
   finish(w);
   const p = w.presence.get(a);
   assert.equal(p.room, rooms[1].id);

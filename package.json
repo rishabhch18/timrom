@@ -9,7 +9,13 @@
     "test": "node --test tests/*.test.mjs",
     "check": "npm test && npm run build",
     "server": "node server/index.mjs",
-    "dev": "node dev.mjs"
+    "dev": "node dev.mjs",
+    "dev:media": "node --env-file=.env.example dev.mjs",
+    "media:up": "docker compose up -d media",
+    "media:down": "docker compose stop media",
+    "media:native": "livekit-server --config infra/livekit-native.yaml",
+    "test:load": "node scripts/load-smoke.mjs",
+    "preview:media": "node --env-file=.env.example server/index.mjs"
   },
   "engines": {
     "node": "^24.15.0 || ^26.0.0"
@@ -19,7 +25,12 @@
     "@angular/compiler": "22.2.0",
     "@angular/core": "22.2.0",
     "@angular/platform-browser": "22.2.0",
+    "@fontsource/figtree": "5.3.0",
+    "@fontsource/noto-sans-devanagari": "5.3.0",
+    "@fontsource/quicksand": "5.3.0",
     "gsap": "3.12.5",
+    "livekit-client": "2.22.3",
+    "livekit-server-sdk": "2.19.1",
     "rxjs": "7.8.2",
     "three": "0.147.0",
     "tslib": "2.8.1",

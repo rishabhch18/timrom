@@ -2359,7 +2359,7 @@ function boot() {
   if(options.live){
     canvas.setAttribute('aria-label','Connected 3D home. Click a floor to walk through permitted doors; click furniture for actions.');
     scene.children.forEach(o=>{if(!o.isLight)o.visible=false;});
-    liveScene=connectedScene({T,scene,camera,controls,canvas,B,fitModel,mkPerson,animPerson,onCommand:options.onCommand,onItem:options.onItem,labelHost:$('.connected-room-labels')});
+    liveScene=connectedScene({T,scene,camera,controls,canvas,B,fitModel,mkPerson,releasePerson:p=>{const i=allPersons.indexOf(p);if(i>=0)allPersons.splice(i,1);p.glb?.mixer.stopAllAction();if(p.glb)p.glb.mixer.uncacheRoot(p.glb.m);},animPerson,onCommand:options.onCommand,onItem:options.onItem,labelHost:$('.connected-room-labels')});
     liveScene.update(pendingLive);ready=true;$('#loader').classList.add('done');publish();loop();
     loadAssets().then(ok=>{if(lifetime.disposed){disposeModels();return;}assetsReady=ok;liveScene.update(pendingLive,true);allPersons.forEach(p=>upgradePerson(p));publish();});return;
   }

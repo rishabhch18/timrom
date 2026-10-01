@@ -8,6 +8,7 @@ export function connectedScene({
   B,
   fitModel,
   mkPerson,
+  releasePerson,
   animPerson,
   onCommand,
   onItem,
@@ -63,8 +64,8 @@ export function connectedScene({
       labels = [];
       labelHost?.replaceChildren();
       for (const r of s.scene.rooms) {
-        const w = 12 * unit,
-          h = 9 * unit,
+        const w = r.width * unit,
+          h = r.height * unit,
           x = r.ox * unit,
           z = r.oy * unit;
         if (labelHost) {
@@ -95,8 +96,8 @@ export function connectedScene({
             if (p.a === r.id) gaps.add(p.ax + "," + p.ay);
             if (p.b === r.id) gaps.add(p.bx + "," + p.by);
           }
-          for (let a = 0; a < 12; a++)
-            for (const b of [0, 8])
+          for (let a = 0; a < r.width; a++)
+            for (const b of [0, r.height - 1])
               if (!gaps.has(a + "," + b))
                 B(
                   geometry,
@@ -105,19 +106,19 @@ export function connectedScene({
                   0.1,
                   x + a * unit,
                   0,
-                  z + (b === 0 ? -0.5 : 8.5) * unit,
+                  z + (b === 0 ? -0.5 : r.height - 0.5) * unit,
                   r.theme || "#F4EDE3",
                   0.035,
                 );
-          for (let b = 0; b < 9; b++)
-            for (const a of [0, 11])
+          for (let b = 0; b < r.height; b++)
+            for (const a of [0, r.width - 1])
               if (!gaps.has(a + "," + b))
                 B(
                   geometry,
                   0.1,
                   0.7,
                   unit,
-                  x + (a === 0 ? -0.5 : 11.5) * unit,
+                  x + (a === 0 ? -0.5 : r.width - 0.5) * unit,
                   0,
                   z + b * unit,
                   r.theme || "#F4EDE3",
@@ -134,8 +135,8 @@ export function connectedScene({
           targets.push(obj);
         }
       }
-      const maxX = Math.max(...s.scene.rooms.map((r) => r.ox + 12)) * unit,
-        maxZ = Math.max(...s.scene.rooms.map((r) => r.oy + 9)) * unit;
+      const maxX = Math.max(...s.scene.rooms.map((r) => r.ox + r.width)) * unit,
+        maxZ = Math.max(...s.scene.rooms.map((r) => r.oy + r.height)) * unit;
       s.homes
         .filter((h) => h.member && h.id !== s.scene.home)
         .slice(0, 6)
@@ -166,14 +167,22 @@ export function connectedScene({
       const room = s.scene.rooms.find((r) => r.id === person.room);
       if (!room) continue;
       let actor = people.get(person.id);
+      const appearance = JSON.stringify([person.avatar, person.body]);
+      if (actor && actor.appearance !== appearance) {
+        group.remove(actor.root);
+        releasePerson(actor);
+        people.delete(person.id);
+        actor = null;
+      }
       if (!actor) {
         actor = mkPerson({
-          skin: 1,
-          hair: 0,
-          style: 0,
-          outfit: Math.abs(person.id.charCodeAt(0)) % 6,
+          skin: person.avatar?.skin ?? 1,
+          hair: person.avatar?.hair ?? 0,
+          style: person.avatar?.style ?? 0,
+          outfit: person.avatar?.outfit ?? 0,
         });
         actor.root.scale.setScalar(person.body === "miniature" ? 0.75 : 1);
+        actor.appearance = appearance;
         actor.target = new T.Vector3();
         group.add(actor.root);
         people.set(person.id, actor);
@@ -184,12 +193,32 @@ export function connectedScene({
         0,
         (room.oy + person.y) * unit,
       );
+      const action =
+        person.action?.phase === "active" ? person.action.kind : null;
       actor.mode =
-        person.action?.phase === "active" && person.action?.kind === "sleep"
-          ? "sleep"
-          : person.seat
-            ? "sit"
-            : "idle";
+        {
+          sleep: "sleep",
+          rest: "sleep",
+          sit: "sit",
+          study: "type",
+          work: "type",
+          game: "type",
+          eat: "cook",
+        }[action] || "idle";
+      actor.resting = action === "sleep" || action === "rest";
+      actor.reduced = !!s.me.preferences?.reducedMotion;
+      if (action) {
+        const item = room.items.find((i) => i.id === person.action.item);
+        if (item) {
+          actor.yaw = ((item.rotation || 0) * Math.PI) / 2 + Math.PI;
+          actor.target.set(
+            (room.ox + item.x) * unit,
+            actor.resting ? 0.35 : 0,
+            (room.oy + item.y) * unit + 0.12,
+          );
+        }
+      }
+      if (person.gestureUntil > s.serverTime) actor.mode = "wave";
       if (actor.fresh || changedHome) {
         actor.root.position.copy(actor.target);
         actor.fresh = false;
@@ -198,7 +227,7 @@ export function connectedScene({
     for (const [id, actor] of people)
       if (!present.has(id)) {
         group.remove(actor.root);
-        actor.glb?.mixer.stopAllAction();
+        releasePerson(actor);
         people.delete(id);
       }
   }
@@ -211,7 +240,7 @@ export function connectedScene({
     for (const actor of people.values()) {
       const delta = actor.target.clone().sub(actor.root.position),
         distance = delta.length();
-      actor.walking = distance > 0.025;
+      actor.walking = distance > 0.025 && !actor.resting;
       actor.path = null;
       actor.v = Math.min(1.75, distance / Math.max(dt, 0.001));
       if (actor.walking) {
@@ -220,7 +249,12 @@ export function connectedScene({
           delta.multiplyScalar(Math.min(1, (1.75 * dt) / distance)),
         );
       }
-      animPerson(actor, dt);
+      if (actor.resting)
+        actor.root.position.lerp(actor.target, 1 - Math.exp(-dt * 6));
+      actor.root.rotation.z +=
+        ((actor.resting ? Math.PI / 2 : 0) - actor.root.rotation.z) *
+        (1 - Math.exp(-dt * 7));
+      animPerson(actor, actor.reduced && !actor.walking ? 0 : dt);
     }
     const me = people.get(snapshot?.me.id);
     if (me && follow) {
@@ -252,7 +286,7 @@ export function connectedScene({
       }
       if (o?.userData.home) {
         const h = o.userData.home;
-        onCommand("join", { room: h.rooms[0]?.id });
+        onCommand("travelNeighbour", { home: h.id, walk: false });
         return;
       }
     }
@@ -261,8 +295,14 @@ export function connectedScene({
       const room = hit.object.userData.room;
       onCommand("move", {
         room: room.id,
-        x: Math.max(0, Math.min(11, Math.round(hit.point.x / unit - room.ox))),
-        y: Math.max(0, Math.min(8, Math.round(hit.point.z / unit - room.oy))),
+        x: Math.max(
+          0,
+          Math.min(room.width - 1, Math.round(hit.point.x / unit - room.ox)),
+        ),
+        y: Math.max(
+          0,
+          Math.min(room.height - 1, Math.round(hit.point.z / unit - room.oy)),
+        ),
       });
     }
   }
@@ -274,8 +314,8 @@ export function connectedScene({
       follow = false;
       const rooms = snapshot?.scene?.rooms;
       if (!rooms?.length) return;
-      const x = (Math.max(...rooms.map((r) => r.ox + 12)) * unit) / 2,
-        z = (Math.max(...rooms.map((r) => r.oy + 9)) * unit) / 2;
+      const x = (Math.max(...rooms.map((r) => r.ox + r.width)) * unit) / 2,
+        z = (Math.max(...rooms.map((r) => r.oy + r.height)) * unit) / 2;
       controls.target.set(x, 0, z);
       camera.position.set(x + 22, 32, z + 32);
     },
@@ -284,7 +324,7 @@ export function connectedScene({
     },
     destroy() {
       scene.remove(group);
-      for (const a of people.values()) a.glb?.mixer.stopAllAction();
+      for (const a of people.values()) releasePerson(a);
       people.clear();
     },
   };

@@ -1,3 +1,13 @@
+@import "@fontsource/figtree/latin-400.css";
+@import "@fontsource/figtree/latin-500.css";
+@import "@fontsource/figtree/latin-600.css";
+@import "@fontsource/figtree/latin-700.css";
+@import "@fontsource/figtree/latin-800.css";
+@import "@fontsource/figtree/latin-900.css";
+@import "@fontsource/quicksand/latin-500.css";
+@import "@fontsource/quicksand/latin-600.css";
+@import "@fontsource/quicksand/latin-700.css";
+@import "@fontsource/noto-sans-devanagari/devanagari-400.css";
 :root{
   --bg:#EFEBF6;
   --chrome:#FCE9DC;
@@ -465,3 +475,9 @@ body { margin:0; }
 .call-controls{display:flex;gap:5px;flex-wrap:wrap}.call-controls button{font-size:11px;padding:7px}.call-controls small{width:100%;font-size:10px}.video-tiles{display:flex;overflow:auto;gap:6px;flex-shrink:0}.video-tiles video{width:120px;height:80px;background:#2e2945;border-radius:12px}.video-tiles:empty{display:none}
 .connected-room-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}.connected-room-labels span{position:absolute;left:0;top:0;font-size:10px;line-height:1.2;color:#514865;background:#fffaf5db;border:1px solid #e7dfed;padding:4px 7px;border-radius:8px;white-space:nowrap}
 timrom-social{display:block;height:100dvh}.connected-world #stage{min-height:0}.social-app input,.social-app select{background:var(--panel-2)}.messages article{background:var(--panel-2)}.test-notice{color:#4d3e0f!important}
+/* Connected tools use the same soft palette and remain usable with a keyboard. */
+.social-app textarea{width:100%;min-height:90px;font:inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.form-grid label{min-width:0}.compact-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.floor-editor{width:100%;min-height:220px;margin:18px 0;background:#f5f2ec;border-radius:16px}.floor-editor g{cursor:pointer}.floor-editor g:focus{outline:1px solid #65517e}.discovery-globe{width:180px;height:180px;display:block;margin:auto}.discovery-globe g{cursor:pointer}.dm-history{max-height:280px;overflow:auto}.unread{border-left:3px solid var(--accent);padding-left:12px!important}.message-tools{display:flex;gap:4px}.social-app .message-tools button{padding:3px 8px;font-size:11px}.messages blockquote{font-size:11px;border-left:2px solid var(--accent);padding-left:8px;margin:5px 0;color:var(--ink-2)}.mobile-chat-toggle{display:none}.social-app button:focus-visible,.social-app input:focus-visible,.social-app select:focus-visible{outline:3px solid #a491c9;outline-offset:2px}.reduced-motion *{animation:none!important;scroll-behavior:auto!important;transition:none!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+@media(max-width:760px){.mobile-chat-toggle{display:block}.social-layout.chat-expanded{grid-template-rows:minmax(100px,.4fr) minmax(260px,1fr)}.social-top nav{overflow:auto;justify-content:flex-start}.social-panel{z-index:20}.social-app .form-grid{gap:6px}.social-top>span:not(.local-badge){font-size:11px}.chat-expanded .messages article{display:block}.room-chat .call-controls small{display:none}}
+.social-app .language-picker{width:72px;padding:7px;font-size:12px;margin-left:auto}.social-top a:last-child{margin-left:0}
+
+.social-app:lang(hi){font-family:Figtree,"Noto Sans Devanagari",sans-serif;}

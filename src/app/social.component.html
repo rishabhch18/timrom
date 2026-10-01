@@ -1,7 +1,10 @@
-<div class="social-app">
+<div
+  class="social-app" [attr.lang]="api.language()"
+  [class.reduced-motion]="api.state()?.me?.preferences?.['reducedMotion']"
+>
   <header class="social-top">
     <a class="social-brand" href="/">Timrom<span>.</span></a
-    ><span class="local-badge">Connected local build</span>
+    ><span class="local-badge">{{ "Local preview" | ui }}</span>
     @if (api.state(); as s) {
       <nav aria-label="Home tools">
         <button title="Discover and joined homes" (click)="toggle('homes')">
@@ -15,11 +18,34 @@
         >
           ⚙
         </button>
+        <button title="Friends and direct messages" (click)="toggle('friends')">
+          ♧
+        </button>
+        <button title="Profile and avatar" (click)="toggle('profile')">
+          ☺
+        </button>
+        <button title="Notifications" (click)="toggle('notifications')">
+          ♢{{ unread() || "" }}
+        </button>
+        @if (s.me.operator) {
+          <button title="Platform review" (click)="toggle('platform')">
+            ⚑
+          </button>
+        }
       </nav>
       <span>{{ s.me.xp }} XP · {{ s.me.coins }} 🪙</span
       ><button (click)="api.logout()" title="Sign out">↪</button>
     }
-    <a href="?preview=1">Visual demo</a>
+    <select
+      class="language-picker"
+      aria-label="Language"
+      [value]="api.language()"
+      (change)="api.setLanguage($any($event.target).value)"
+    >
+      <option value="en">EN</option>
+      <option value="hi">हिन्दी</option>
+    </select>
+    <a href="?preview=1">{{ "Visual demo" | ui }}</a>
   </header>
   @if (api.error()) {
     <div class="social-error" role="alert">
@@ -32,7 +58,7 @@
   @if (!api.state()) {
     <main class="auth-wrap">
       <section class="auth-card">
-        <span class="eyebrow">A place for your people</span>
+        <span class="eyebrow">{{ "A place for your people" | ui }}</span>
         <h1>
           {{
             challenge()
@@ -42,7 +68,9 @@
                 : "Welcome back."
           }}
         </h1>
-        <p>Homes for conversation, focus and everything in between.</p>
+        <p>
+          {{ "Homes for conversation, focus and everything in between." | ui }}
+        </p>
         <form (submit)="account($event)">
           @if (challenge()) {
             <p class="test-notice">
@@ -50,7 +78,8 @@
               <strong>{{ code() }}</strong>
             </p>
             <label
-              >Verification code<input
+              >{{ "Verification code" | ui
+              }}<input
                 name="code"
                 required
                 inputmode="numeric"
@@ -64,18 +93,19 @@
                 [class.active]="method() === 'email'"
                 (click)="method.set('email')"
               >
-                Email</button
+                {{ "Email" | ui }}</button
               ><button
                 type="button"
                 [class.active]="method() === 'phone'"
                 (click)="method.set('phone')"
               >
-                Mobile
+                {{ "Mobile" | ui }}
               </button>
             </div>
             @if (signup()) {
               <label
-                >Display name<input
+                >{{ "Display name" | ui
+                }}<input
                   name="name"
                   required
                   minlength="2"
@@ -89,10 +119,10 @@
                   maxlength="24"
                   autocomplete="username" /></label
               ><label
-                >Age group
-                <select name="band">
-                  <option value="adult">18+ adults</option>
-                  <option value="teen">13–17 teens</option>
+                >{{ "Age group" | ui
+                }}<select name="band">
+                  <option value="adult">{{ "18+ adults" | ui }}</option>
+                  <option value="teen">{{ "13–17 teens" | ui }}</option>
                 </select></label
               ><small
                 >Local age fixtures only; this is not age verification.</small
@@ -106,9 +136,10 @@
                 required
                 [autocomplete]="method() === 'email' ? 'email' : 'tel'"
             /></label>
-            @if (method() === "email") {
+            @if (method() === "email" || recover()) {
               <label
-                >Password<input
+                >{{ "Password" | ui
+                }}<input
                   name="password"
                   type="password"
                   required
@@ -143,8 +174,26 @@
               : "New here? Create an account"
           }}
         </button>
+        <button
+          class="text-button"
+          (click)="
+            recover.set(!recover()); signup.set(false); challenge.set('')
+          "
+        >
+          {{
+            recover()
+              ? "Cancel password reset"
+              : "Forgot password? Reset with your contact"
+          }}
+        </button>
+        @if (recover()) {
+          <p>
+            Enter your registered contact and a new password, then verify the
+            local test code.
+          </p>
+        }
         <p class="subtle">
-          Private contact details · Separate teen and adult spaces
+          {{ "Private contact details · Separate teen and adult spaces" | ui }}
         </p>
       </section>
       <div class="auth-art" aria-hidden="true">
@@ -154,6 +203,14 @@
     </main>
   } @else {
     @let s = api.state()!;
+    @if (s.deviceActive === false) {
+      <div class="social-error">
+        {{ "The world is active on another device." | ui
+        }}<button (click)="api.run('takeoverDevice')">
+          {{ "Continue on this device" | ui }}
+        </button>
+      </div>
+    }
     <div class="social-status">
       {{ api.status() }} · {{ s.me.name }} · &#64;{{ s.me.username }} ·
       {{ s.me.band === "teen" ? "Teen spaces" : "Adult spaces" }}
@@ -163,7 +220,7 @@
         }}
       }
     </div>
-    <main class="social-layout">
+    <main class="social-layout" [class.chat-expanded]="chatExpanded()">
       <section class="world-area">
         @if (s.room) {
           <timrom-connected-world
@@ -175,12 +232,17 @@
         } @else {
           <div class="empty-world">
             <span>⌂</span>
-            <h1>Find your people.</h1>
-            <p>Discover a community, use an invitation, or create a home.</p>
+            <h1>{{ "Find your people." | ui }}</h1>
+            <p>
+              {{
+                "Discover a community, use an invitation, or create a home."
+                  | ui
+              }}
+            </p>
             <button class="primary" (click)="panel.set('create')">
-              Create home
+              {{ "Create home" | ui }}
             </button>
-            <p>No personal house is created automatically.</p>
+            <p>{{ "No personal house is created automatically." | ui }}</p>
           </div>
         }
         @if (placement(); as item) {
@@ -188,7 +250,7 @@
             <b>Place {{ item.asset }}: click a floor tile</b
             ><button (click)="rotation.set((rotation() + 1) % 4)">
               Rotate {{ rotation() * 90 }}°</button
-            ><button (click)="placement.set(null)">Cancel</button>
+            ><button (click)="placement.set(null)">{{ "Cancel" | ui }}</button>
           </div>
         }
         @if (selected(); as item) {
@@ -209,27 +271,177 @@
             >
               ×
             </button>
+            @if (
+              [
+                "friends",
+                "profile",
+                "notifications",
+                "people",
+                "sharing",
+                "homeAdmin",
+                "platform",
+                "history",
+                "account",
+              ].includes(panel())
+            ) {
+              <timrom-community-panel [panel]="panel()" [targetHome]="adminHome()" />
+            }
+            @if (panel() === "builder") {
+              <timrom-builder />
+            }
             @switch (panel()) {
               @case ("homes") {
-                <h2>Your neighbourhood</h2>
+                <h2>{{ t("Your neighbourhood", "आपका पड़ोस") }}</h2>
+                <svg
+                  class="discovery-globe"
+                  viewBox="0 0 200 200"
+                  role="img"
+                  aria-label="Community globe"
+                >
+                  <defs>
+                    <radialGradient id="ocean">
+                      <stop stop-color="#e2edf3" />
+                      <stop offset="1" stop-color="#acc7d6" />
+                    </radialGradient>
+                  </defs>
+                  <circle cx="100" cy="100" r="90" fill="url(#ocean)" />
+                  <ellipse
+                    cx="100"
+                    cy="100"
+                    rx="44"
+                    ry="90"
+                    fill="none"
+                    stroke="#fff8"
+                  />
+                  <ellipse
+                    cx="100"
+                    cy="100"
+                    rx="90"
+                    ry="38"
+                    fill="none"
+                    stroke="#fff8"
+                  />
+                  <path d="M10 100H190 M100 10V190" stroke="#fff8" />
+                  @for (h of homes(); track h.id) {
+                    @if (globe(h); as p) {
+                      <g
+                        tabindex="0"
+                        role="button"
+                        [attr.aria-label]="h.name"
+                        (click)="enter(h)"
+                        (keydown.enter)="enter(h)"
+                      >
+                        <circle
+                          [attr.cx]="p.x"
+                          [attr.cy]="p.y"
+                          r="5"
+                          fill="#775b9e"
+                        />
+                        <title>{{ h.name }} · {{ h.city }}</title>
+                      </g>
+                    }
+                  }
+                </svg>
+                <label class="sr-only">{{ "Rotate globe" | ui }}</label
+                ><input
+                  aria-label="Rotate globe"
+                  type="range"
+                  min="-180"
+                  max="180"
+                  [value]="globeLongitude()"
+                  (input)="globeLongitude.set(+$any($event.target).value)"
+                />
+                <input
+                  aria-label="Search homes"
+                  placeholder="Search homes or places"
+                  (input)="search.set($any($event.target).value)"
+                />
+                <div class="form-grid">
+                  <select
+                    aria-label="Community type"
+                    (change)="filterGenre.set($any($event.target).value)"
+                  >
+                    <option value="">{{ "All communities" | ui }}</option>
+                    <option>Hangout</option>
+                    <option>Study</option>
+                    <option>Gaming</option>
+                    <option>Work</option></select
+                  ><select
+                    aria-label="Continent"
+                    (change)="filterRegion.set($any($event.target).value)"
+                  >
+                    <option value="">{{ "All regions" | ui }}</option>
+                    <option>Asia</option>
+                    <option>Africa</option>
+                    <option>Europe</option>
+                    <option>North America</option>
+                    <option>South America</option>
+                    <option>Oceania</option></select
+                  ><input
+                    placeholder="Country"
+                    aria-label="Country filter"
+                    (input)="filterCountry.set($any($event.target).value)"
+                  /><input
+                    placeholder="State"
+                    aria-label="State filter"
+                    (input)="filterState.set($any($event.target).value)"
+                  /><input
+                    placeholder="City"
+                    aria-label="City filter"
+                    (input)="filterCity.set($any($event.target).value)"
+                  />
+                </div>
                 <form (submit)="form($event, 'invite')">
-                  <label>Invitation code<input name="code" required /></label
-                  ><button class="primary">Join by invite</button>
+                  <label
+                    >{{ "Invitation code" | ui
+                    }}<input name="code" required /></label
+                  ><button class="primary">{{ "Join by invite" | ui }}</button>
                 </form>
                 <div class="home-list">
-                  @for (h of s.homes; track h.id) {
+                  @for (h of homes(); track h.id) {
                     <article>
                       <span>{{ h.member ? "Joined" : "Discover" }}</span>
                       <h3>{{ h.name }}</h3>
                       <p>{{ h.genre }} · {{ h.city }} · {{ h.band }}</p>
+                      <details>
+                        <summary>{{ "Home rules" | ui }}</summary>
+                        <p>{{ h.rules }}</p>
+                      </details>
+                      @if (h.member) {
+                        <button
+                          title="Pin favourite"
+                          (click)="
+                            api.run('favourite', {
+                              home: h.id,
+                              enabled: !h.favourite,
+                            })
+                          "
+                        >
+                          {{ h.favourite ? "★" : "☆" }}
+                        </button>
+                        @if (s.room && s.room.home !== h.id) {
+                          <button
+                            (click)="
+                              api.run('travelNeighbour', {
+                                home: h.id,
+                                walk: true,
+                              });
+                              panel.set('')
+                            "
+                          >
+                            {{ "Walk to gate" | ui }}
+                          </button>
+                        }
+                      }
                       @if (!h.member) {
                         <button (click)="join(h)">
-                          Accept home rules &amp; join
+                          {{ "Accept home rules & join" | ui }}
                         </button>
                       }
                       <button (click)="enter(h)">
                         {{ h.member ? "Visit home" : "Visit forum" }}
                       </button>
+                      @if(['owner','admin'].includes(h.role)){<button (click)="adminHome.set(h.id);panel.set('homeAdmin')">Manage home</button>}
                       @if (h.invite) {
                         <p>
                           Invite: <code>{{ h.invite }}</code>
@@ -237,38 +449,59 @@
                       }
                     </article>
                   } @empty {
-                    <p>No homes yet. Create one or use an invitation.</p>
+                    <p>
+                      {{
+                        "No homes yet. Create one or use an invitation." | ui
+                      }}
+                    </p>
                   }
                 </div>
               }
               @case ("create") {
-                <h2>Create a home</h2>
+                <h2>{{ "Create a home" | ui }}</h2>
                 <form (submit)="form($event, 'createHome')">
                   <label
-                    >Name<input
+                    >{{ "Name" | ui
+                    }}<input
                       name="name"
                       required
                       minlength="3"
                       maxlength="48" /></label
                   ><label
-                    >Free template<select name="template">
+                    >{{ "Free template" | ui
+                    }}<select name="template">
                       <option>Hangout</option>
                       <option>Study</option>
                       <option>Gaming</option>
                       <option>Work</option>
                     </select></label
-                  ><label>Country<input name="country" value="India" /></label
-                  ><label>State<input name="state" /></label
-                  ><label>City<input name="city" /></label>
+                  ><label
+                    >{{ "Country" | ui
+                    }}<input name="country" value="India" /></label
+                  ><label>{{ "State" | ui }}<input name="state" /></label
+                  ><label>{{ "City" | ui }}<input name="city" /></label>
                   <p>
                     Invite-only · Free starter furniture ·
                     {{ s.me.band }} community
                   </p>
-                  <button class="primary">Create home</button>
+                  <button class="primary">{{ "Create home" | ui }}</button>
                 </form>
               }
               @case ("settings") {
-                <h2>Preferences</h2>
+                <h2>{{ t("Preferences", "प्राथमिकताएँ") }}</h2>
+                <button (click)="panel.set('account')">
+                  {{ "Account & privacy" | ui }}
+                </button>
+                @if (home()) {
+                  <button (click)="adminHome.set('');panel.set('homeAdmin')">
+                    {{ "Home rules & management" | ui }}
+                  </button>
+                }
+                @if (manage()) {
+                  <button (click)="panel.set('builder')">
+                    {{ "⌗ Edit floor plan" | ui }}
+                  </button>
+                }
                 <label class="check"
                   ><input
                     type="checkbox"
@@ -276,7 +509,7 @@
                     (change)="
                       api.run('auto', { enabled: $any($event.target).checked })
                     "
-                  />Opt in to room-based tracking</label
+                  />{{ "Opt in to room-based tracking" | ui }}</label
                 ><label class="check"
                   ><input
                     type="checkbox"
@@ -286,7 +519,7 @@
                         enabled: $any($event.target).checked,
                       })
                     "
-                  />Opt in to furniture-based tracking</label
+                  />{{ "Opt in to furniture-based tracking" | ui }}</label
                 ><label class="check"
                   ><input
                     type="checkbox"
@@ -296,15 +529,62 @@
                         enabled: $any($event.target).checked,
                       })
                     "
-                  />Remember automatic voice joining</label
+                  />{{ "Remember automatic voice joining" | ui }}</label
                 >
+                <details>
+                  <summary>{{ "Voice & video devices" | ui }}</summary>
+                  <button (click)="call.refreshDevices()">
+                    {{ "Refresh devices" | ui }}</button
+                  ><label
+                    >{{ "Microphone" | ui
+                    }}<select
+                      (change)="
+                        call.chooseDevice('audio', $any($event.target).value)
+                      "
+                    >
+                      <option value="">{{ "System default" | ui }}</option>
+                      @for (d of call.devices(); track d.deviceId) {
+                        @if (d.kind === "audioinput") {
+                          <option [value]="d.deviceId">
+                            {{ d.label || "Microphone" }}
+                          </option>
+                        }
+                      }
+                    </select></label
+                  ><label
+                    >{{ "Camera" | ui
+                    }}<select
+                      (change)="
+                        call.chooseDevice('video', $any($event.target).value)
+                      "
+                    >
+                      <option value="">{{ "System default" | ui }}</option>
+                      @for (d of call.devices(); track d.deviceId) {
+                        @if (d.kind === "videoinput") {
+                          <option [value]="d.deviceId">
+                            {{ d.label || "Camera" }}
+                          </option>
+                        }
+                      }
+                    </select></label
+                  ><label class="check"
+                    ><input
+                      type="checkbox"
+                      [checked]="call.lowBandwidth()"
+                      (change)="
+                        call.lowBandwidth.set($any($event.target).checked)
+                      "
+                    />{{ "Low bandwidth (next camera start)" | ui }}</label
+                  >
+                </details>
                 @if (s.room && manage()) {
                   <h2>{{ s.room.name }}</h2>
                   <form
                     (submit)="form($event, 'capacity', { room: s.room.id })"
                   >
                     <label
-                      >Capacity · 0 = unlimited<input
+                      >{{ "Capacity · 0 = unlimited" | ui
+                      }}<input
                         type="range"
                         min="0"
                         max="100"
@@ -316,10 +596,11 @@
                         min="0"
                         max="10000"
                         [value]="s.room.capacity" /></label
-                    ><button>Save capacity</button>
+                    ><button>{{ "Save capacity" | ui }}</button>
                   </form>
                   <label
-                    >Voice mode<select
+                    >{{ "Voice mode" | ui
+                    }}<select
                       [value]="s.room.voice_mode"
                       (change)="
                         api.run('voiceMode', {
@@ -328,9 +609,13 @@
                         })
                       "
                     >
-                      <option value="open">Open conversation</option>
-                      <option value="moderated">Moderated speakers</option>
-                      <option value="disabled">Quiet room</option>
+                      <option value="open">
+                        {{ "Open conversation" | ui }}
+                      </option>
+                      <option value="moderated">
+                        {{ "Moderated speakers" | ui }}
+                      </option>
+                      <option value="disabled">{{ "Quiet room" | ui }}</option>
                     </select></label
                   ><label class="check"
                     ><input
@@ -342,68 +627,56 @@
                           locked: $any($event.target).checked,
                         })
                       "
-                    />Lock new entry</label
+                    />{{ "Lock new entry" | ui }}</label
                   >
-                  <h3>Add connected room</h3>
+                  <h3>{{ "Add connected room" | ui }}</h3>
                   <form
                     (submit)="form($event, 'createRoom', { home: s.room.home })"
                   >
                     <label
-                      >Name<input name="name" required minlength="2" /></label
+                      >{{ "Name" | ui
+                      }}<input name="name" required minlength="2" /></label
                     ><label
-                      >Activity<select name="kind">
+                      >{{ "Activity" | ui
+                      }}<select name="kind">
                         @for (kind of activityKinds; track kind) {
                           <option>{{ kind }}</option>
                         }
                       </select></label
                     ><label
-                      >Capacity<input
+                      >{{ "Capacity" | ui
+                      }}<input
                         name="capacity"
                         type="number"
                         min="0"
                         max="10000"
                         placeholder="8" /></label
-                    ><button>Add room</button>
+                    ><button>{{ "Add room" | ui }}</button>
                   </form>
-                  @if (home()?.role === "owner") {
-                    <h3>Home roles</h3>
-                    @for (member of home()?.members; track member.id) {
-                      @if (member.id !== s.me.id) {
-                        <label
-                          >{{ member.name
-                          }}<select
-                            (change)="
-                              api.run('role', {
-                                home: s.room.home,
-                                user: member.id,
-                                role: $any($event.target).value,
-                              })
-                            "
-                          >
-                            <option value="member">Member</option>
-                            <option value="admin">Admin</option>
-                            <option value="moderator">Moderator</option>
-                          </select></label
-                        >
-                      }
-                    }
-                  }
+                  @if(home()?.role==='owner'){<button (click)="adminHome.set('');panel.set('homeAdmin')">Manage roles and access</button>}
+
                 }
               }
               @case ("activities") {
-                <h2>Your routines</h2>
+                <h2>{{ t("Your routines", "आपकी दिनचर्या") }}</h2>
+                <button (click)="panel.set('history')">
+                  {{ "History & day/week totals" | ui }}
+                </button>
                 <form
-                  (submit)="form($event, 'activity', { visibility: 'private' })"
+                  (submit)="form($event, 'activity')"
                 >
                   <label
-                    >Start activity<select name="kind">
+                    >{{ "Start activity" | ui
+                    }}<select name="kind">
                       @for (kind of activityKinds; track kind) {
                         <option>{{ kind }}</option>
                       }
                     </select></label
-                  ><button>Start privately</button>
+                  ><label>Audience<select name="visibility"><option value="private">Private</option><option value="friends">Friends</option><option value="home">Home members</option><option value="public">Eligible public viewers</option></select></label><button>{{ "Start activity" | ui }}</button>
                 </form>
-                <button (click)="api.run('activityStop')">Stop activity</button>
+                <button (click)="api.run('activityStop')">
+                  {{ "Stop activity" | ui }}
+                </button>
                 <p>
                   Manual routines can continue offline as history; rewards
                   require being connected.
@@ -422,12 +695,67 @@
                 }
               }
               @case ("inventory") {
-                <h2>Your inventory</h2>
+                <h2>{{ t("Your inventory", "आपकी वस्तुएँ") }}</h2>
+                <button (click)="panel.set('sharing')">
+                  {{ "Gifts & loans" | ui }}
+                </button>
                 <p>{{ s.me.coins }} coins · Level {{ s.me.level }}</p>
                 @for (item of s.items; track item.id) {
                   <article>
                     <b>{{ item.asset }}</b> ·
                     {{ item.room ? "Placed" : "Stored" }}
+                    <details>
+                      <summary>{{ "Voice & video devices" | ui }}</summary>
+                      <button (click)="call.refreshDevices()">
+                        {{ "Refresh devices" | ui }}</button
+                      ><label
+                        >{{ "Microphone" | ui
+                        }}<select
+                          (change)="
+                            call.chooseDevice(
+                              'audio',
+                              $any($event.target).value
+                            )
+                          "
+                        >
+                          <option value="">{{ "System default" | ui }}</option>
+                          @for (d of call.devices(); track d.deviceId) {
+                            @if (d.kind === "audioinput") {
+                              <option [value]="d.deviceId">
+                                {{ d.label || "Microphone" }}
+                              </option>
+                            }
+                          }
+                        </select></label
+                      ><label
+                        >{{ "Camera" | ui
+                        }}<select
+                          (change)="
+                            call.chooseDevice(
+                              'video',
+                              $any($event.target).value
+                            )
+                          "
+                        >
+                          <option value="">{{ "System default" | ui }}</option>
+                          @for (d of call.devices(); track d.deviceId) {
+                            @if (d.kind === "videoinput") {
+                              <option [value]="d.deviceId">
+                                {{ d.label || "Camera" }}
+                              </option>
+                            }
+                          }
+                        </select></label
+                      ><label class="check"
+                        ><input
+                          type="checkbox"
+                          [checked]="call.lowBandwidth()"
+                          (change)="
+                            call.lowBandwidth.set($any($event.target).checked)
+                          "
+                        />{{ "Low bandwidth (next camera start)" | ui }}</label
+                      >
+                    </details>
                     @if (s.room && manage()) {
                       @if (item.asset === "sage" || item.asset === "rose") {
                         <button
@@ -438,20 +766,22 @@
                             })
                           "
                         >
-                          Apply finish
+                          {{ "Apply finish" | ui }}
                         </button>
                       } @else {
-                        <button (click)="place(item)">Place / move</button>
+                        <button (click)="place(item)">
+                          {{ "Place / move" | ui }}
+                        </button>
                       }
                     }
                     @if (item.room) {
                       <button (click)="api.run('store', { item: item.id })">
-                        Store
+                        {{ "Store" | ui }}
                       </button>
                     }
                   </article>
                 }
-                <h3>Catalog</h3>
+                <h3>{{ "Catalog" | ui }}</h3>
                 @for (item of s.catalog; track item.id) {
                   <article>
                     <b>{{ item.name }}</b>
@@ -464,7 +794,7 @@
                         api.run('buy', { asset: item.id, nonce: cryptoId() })
                       "
                     >
-                      Buy one
+                      {{ "Buy one" | ui }}
                     </button>
                   </article>
                 }
@@ -474,7 +804,18 @@
         }
       </section>
       <aside class="room-chat">
-        <h2>{{ s.room?.name || "Room chat" }}</h2>
+        <div class="compact-row">
+          <h2>{{ s.room?.name || t("Room chat", "कमरे की बातचीत") }}</h2>
+          <button
+            class="mobile-chat-toggle"
+            (click)="chatExpanded.set(!chatExpanded())"
+            [attr.aria-expanded]="chatExpanded()"
+          >
+            {{ chatExpanded() ? "⌄" : "⌃" }}</button
+          ><button title="People and moderation" (click)="panel.set('people')">
+            ♧
+          </button>
+        </div>
         @if (s.room) {
           <div class="call-controls">
             @if (!call.joined()) {
@@ -482,7 +823,7 @@
                 [disabled]="call.busy() || s.room.voice_mode === 'disabled'"
                 (click)="call.join()"
               >
-                Join voice
+                {{ "Join voice" | ui }}
               </button>
             } @else {
               <button [disabled]="call.busy()" (click)="call.toggleMic()">
@@ -491,17 +832,18 @@
                 {{ call.camera() ? "Camera off" : "Camera" }}</button
               ><button (click)="call.toggleDeafen()">
                 {{ call.deafened() ? "Listen" : "Deafen" }}</button
-              ><button (click)="call.leave()">Leave</button>
+              ><button (click)="call.leave()">{{ "Leave" | ui }}</button>
               @if (s.room.voice_mode === "moderated") {
                 <button (click)="api.run('raiseHand', { raised: true })">
                   ✋
                 </button>
               }
             }
-            <small
-              >Local media: 6 participants · relay/SFU integration
-              pending</small
-            >
+            <small>{{
+              s.capabilities.media === "livekit"
+                ? "Local SFU · device/network validation pending"
+                : "Local fallback · 6 participants"
+            }}</small>
           </div>
           <div class="video-tiles">
             @for (remote of call.remotes(); track remote.id) {
@@ -533,12 +875,60 @@
             @for (m of s.room.messages; track m.id) {
               <article>
                 <b>{{ m.name }}</b>
-                <p>{{ m.body }}</p>
+                @if (m.replyPreview) {
+                  <blockquote>
+                    {{ m.replyPreview.name }}: {{ m.replyPreview.body }}
+                  </blockquote>
+                }
+                @if (editing() === m.id) {
+                  <form
+                    (submit)="form($event, 'editMessage', { message: m.id })"
+                  >
+                    <input
+                      name="body"
+                      [value]="m.body"
+                      required
+                      maxlength="1000"
+                    /><button>{{ "Save" | ui }}</button
+                    ><button type="button" (click)="editing.set('')">
+                      {{ "Cancel" | ui }}
+                    </button>
+                  </form>
+                } @else {
+                  <p>{{ m.deleted ? "Message deleted" : m.body }}</p>
+                }
+                @if (!m.deleted) {
+                  <div class="message-tools">
+                    <button title="Reply" (click)="reply.set(m.id)">↩</button
+                    ><button
+                      title="Like"
+                      (click)="api.run('react', { message: m.id, emoji: '❤️' })"
+                    >
+                      ♡ {{ m.reactions?.length || "" }}
+                    </button>
+                    @if (m.user === s.me.id) {
+                      <button title="Edit message" (click)="editing.set(m.id)">
+                        ✎</button
+                      ><button
+                        title="Delete message"
+                        (click)="api.run('deleteMessage', { message: m.id })"
+                      >
+                        ×
+                      </button>
+                    }
+                  </div>
+                }
               </article>
             } @empty {
-              <p>Say hello to the room.</p>
+              <p>{{ "Say hello to the room." | ui }}</p>
             }
           </div>
+          @if (reply()) {
+            <div class="compact-row">
+              <small>{{ "Replying to a message" | ui }}</small
+              ><button (click)="reply.set('')">{{ "Cancel" | ui }}</button>
+            </div>
+          }
           <form class="chat-form" (submit)="form($event, 'chat')">
             <input
               name="body"
@@ -549,9 +939,11 @@
               autocomplete="off"
             /><button aria-label="Send message">➤</button>
           </form>
-          <button (click)="api.run('stand')">Stand / finish action</button>
+          <button (click)="api.run('stand')">
+            {{ "Stand / finish action" | ui }}
+          </button>
         } @else {
-          <p>Enter a home to join its conversation.</p>
+          <p>{{ "Enter a home to join its conversation." | ui }}</p>
         }
       </aside>
     </main>

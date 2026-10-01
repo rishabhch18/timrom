@@ -1,10 +1,8 @@
-# Timrom — Angular and local backend
+# Timrom — Angular social homes
 
-The shared Angular repository now includes the server-authoritative local backend. The default app uses persisted accounts, template homes, connected-room movement, room chat, capacity/settings, activity tracking and inventory commands. **The full integrated milestone remains in progress:** see [implemented behavior, verification and remaining work](docs/INTEGRATION-STATUS.md).
+One shared Angular frontend and SQLite/WebSocket backend for connected homes, room chat, activity tracking, inventory and moderation. The integrated local app is usable, but the full product is **still in progress**, especially visual/motion fidelity, age/contact workflows and real-device media validation. See [implemented features, test evidence and remaining gaps](docs/INTEGRATION-STATUS.md).
 
-The original HTML, 51 models and visual demo are retained as references. The connected dynamic room layout reuses those assets but has not yet reached full visual/motion parity.
-
-## Run
+## Run locally
 
 Use Node **24.15+**:
 
@@ -14,34 +12,54 @@ npm ci
 npm run dev
 ```
 
-- Connected app: **http://127.0.0.1:4200/**
-- Original visual demo: **http://127.0.0.1:4200/?preview=1**
-- Backend health: **http://127.0.0.1:3012/api/health**
+- Connected app: http://127.0.0.1:4200/
+- Original visual reference: http://127.0.0.1:4200/?preview=1
+- Development backend health: http://127.0.0.1:3012/api/health
 
-Email/SMS verification uses clearly labelled local test codes. Media currently uses a six-person local peer mesh; the 100-voice/10-camera pilot target is not yet supported or verified.
+Email/SMS use clearly labelled **local test codes**. Without SFU configuration, calls use the limited local mesh adapter.
+
+### Local SFU
+
+On macOS, install the official Homebrew `livekit` formula once, then:
 
 ```sh
-npm run check   # tests and production build
-npm run build  # dist/timrom/browser/
-npm run server # serve backend + built app on :3012
+npm run media:native  # keep this terminal running
+npm run dev:media    # run in another terminal
 ```
 
-`npm start` runs Angular alone and expects the backend on :3012. `npm run dev` supervises both and watches backend source changes. The connected database lives in ignored `data/world.sqlite`; do not commit or redistribute it. The sibling One World app/data remain separate and unchanged. Demo storage is never synchronized into authenticated accounts.
+Alternatively, `npm run media:up` starts the pinned Docker service; `npm run media:down` stops it. The Docker path was supplied but could not be runtime-verified on this host; native LiveKit 1.13.7 was verified. Both configurations are only local development examples. The public credentials in `.env.example` and `infra/` must never be used for a public deployment.
 
-## Structure and decisions
+Muted browser SFU connection was verified. 100 live voice participants, 10 real cameras, TURN and cross-network calling have **not** been validated.
+
+### Verify and preview
+
+```sh
+npm run check        # automated tests + production build
+npm run test:load    # isolated 100-client control-plane smoke test
+npm run build
+npm run preview:media # serve built app/API on :3012 with the local SFU config
+```
+
+Set `PORT=4200` to run the built preview at the usual frontend address instead. Stop a development server using that port first. The preview has no hot reload. `npm run server` serves the built app without automatically loading `.env.example`; real deployment configuration is intentionally not supplied.
+
+The connected database is ignored `data/world.sqlite`. Keep backups before migrations; do not commit or share database files, sessions or real contact information. No demo or sibling One World data is imported. Tests use in-memory databases.
+
+For the operator dashboard, configure `TIMROM_OPERATORS` with comma-separated **existing usernames** in your local process environment. A home owner is not automatically a platform operator. See [local architecture and operations](docs/LOCAL-ARCHITECTURE.md).
+
+## Structure
 
 | Path | Purpose |
 |---|---|
-| `src/app/social*`, `call.service.ts`, `connected-world.component.ts` | Angular connected UI, WebSocket/auth state and local media |
-| `src/world/connected-scene.js` | Server-snapshot-driven scene using the preserved renderer/assets |
-| `src/world/timrom-engine.js` | Original scene adapter with separate preview/connected lifecycles |
-| `server/` | SQLite accounts, rooms, movement, social permissions and commands |
-| `tests/` | Domain, HTTP/WebSocket, model and lifecycle verification |
-| `references/` | Earlier prototype source, graphics exploration and product research |
+| `src/app/` | Angular UI, account state, builder, community panels and calls |
+| `src/shared/` | Ordered WebSocket snapshot deltas, shared with the backend |
+| `src/world/connected-scene.js` | Authorized snapshots rendered with the original Timrom assets |
+| `src/world/timrom-engine.js` | Preserved visual-demo scene adapter and asset/animation helpers |
+| `server/` | Accounts, geometry, social permissions, economy, devices and media adapter |
+| `infra/`, `compose.yaml` | Loopback-only SFU examples |
+| `tests/`, `scripts/load-smoke.mjs` | Domain, API, transport, model/lifecycle and load checks |
+| `references/` | Earlier prototype source and research |
 | `timrom.html`, `models/`, `models.json`, `shots/` | Original visual references/assets |
 
-[Approved requirements](docs/PRE-IMPLEMENTATION-DECISIONS.md) · [Comparison](docs/COMPARISON-AND-DECISIONS.md) · [Migration history](docs/ANGULAR-MIGRATION.md) · [Verification](docs/VERIFICATION.md) · [Upstream README](docs/UPSTREAM-README.md)
+[Approved requirements](docs/PRE-IMPLEMENTATION-DECISIONS.md) · [Current status](docs/INTEGRATION-STATUS.md) · [Project comparison](docs/COMPARISON-AND-DECISIONS.md) · [Migration history](docs/ANGULAR-MIGRATION.md) · [Upstream README](docs/UPSTREAM-README.md)
 
-Upstream credits identify models as Kenney CC0 via Hidencod/tge-assets. Exact asset-license provenance remains to be verified before redistribution.
-
-[Earlier prototypes and research](references/README.md) are archived alongside the active application so the complete project source remains available.
+Upstream credits identify the models as Kenney CC0 via Hidencod/tge-assets. Exact asset-license provenance remains to be verified before redistribution. Earlier research/prototypes are archived under [references](references/README.md).

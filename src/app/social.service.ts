@@ -1,3 +1,4 @@
+import { applyStatePatch } from "../shared/state-patch.mjs";
 import { Injectable, signal } from "@angular/core";
 export interface Person {
   id: string;
@@ -11,6 +12,9 @@ export interface Person {
   video?: boolean;
   speaker?: boolean;
   hand?: boolean;
+  personalMuted?: boolean;
+  role?: string;
+  activity?: string;
   blocked?: boolean;
 }
 export interface Room {
@@ -24,8 +28,10 @@ export interface Room {
   outdoor: number;
   voice_mode: string;
   role?: string;
+  access: string;
+  selectedUsers?: string[];
   people: Person[];
-  messages: { id: string; name: string; body: string; user: string }[];
+  messages: Message[];
   items: Item[];
 }
 export interface Home {
@@ -37,6 +43,16 @@ export interface Home {
   member: boolean;
   role: string;
   invite?: string;
+  rules: string;
+  country: string;
+  state: string;
+  region: string;
+  description: string;
+  language: string;
+  listing: string;
+  favourite: boolean;
+  latitude?: number;
+  longitude?: number;
   rooms: Room[];
   members?: Person[];
 }
@@ -52,6 +68,12 @@ export interface Item {
   rotation: number;
 }
 export interface WorldState {
+  deviceActive?: boolean;
+  capabilities: {
+    media: string;
+    localCallLimit: number;
+    productionMediaReady: boolean;
+  };
   me: {
     id: string;
     name: string;
@@ -63,17 +85,107 @@ export interface WorldState {
     auto: number;
     furniture_auto: number;
     voice_follow: number;
+    body: string;
+    color: string;
+    operator: boolean;
+    preferences: Record<string, any>;
   };
   homes: Home[];
   room: Room | null;
-  scene?: unknown;
+  scene?: Scene;
+  notifications: { id: string; body: string; seen: number; time: number }[];
+  directMessages: {
+    id: string;
+    sender: string;
+    recipient: string;
+    body: string;
+    time: number;
+  }[];
+  offers: {
+    id: string;
+    item: string;
+    sender: string;
+    home: string;
+    mode: string;
+    asset: string;
+    name: string;
+  }[];
+  transfers: { home: string; sender: string; recipient: string }[];
+  blocks: { target: string; name: string }[];
+  audit?: {
+    id: string;
+    actor: string;
+    target: string;
+    action: string;
+    time: number;
+  }[];
+  listingQueue?: Home[];
+  reports?: {
+    id: string;
+    user: string;
+    target: string;
+    body: string;
+    resolution?: string;
+  }[];
+  serverTime: number;
   items: Item[];
   catalog: { id: string; name: string; price: number; level: number }[];
-  activities: { id: string; kind: string; start: number; end: number | null }[];
-  friends: { other: string; user: string; status: string; sender: string }[];
+  activities: {
+    id: string;
+    kind: string;
+    start: number;
+    end: number | null;
+    visibility: string;
+  }[];
+  friends: {
+    other: string;
+    user: string;
+    status: string;
+    sender: string;
+    username?: string;
+  }[];
+}
+export interface Message {
+  id: string;
+  name: string;
+  body: string;
+  user: string;
+  deleted?: number;
+  edited?: number;
+  replyPreview?: { name: string; body: string };
+  reactions?: { user: string; emoji: string }[];
+}
+export interface LayoutRoom extends Room {
+  ox: number;
+  oy: number;
+  width: number;
+  height: number;
+}
+export interface Door {
+  a: string;
+  b: string;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+}
+export interface Scene {
+  home: string;
+  rooms: LayoutRoom[];
+  portals: Door[];
+  revision: number;
+  people: Person[];
 }
 @Injectable({ providedIn: "root" })
 export class SocialService {
+  readonly locale = signal("en");
+  language() {
+    return this.state()?.me.preferences?.["language"] || this.locale();
+  }
+  setLanguage(value: string) {
+    this.locale.set(value);
+    if (this.state()) void this.run("preferences", { language: value });
+  }
   readonly state = signal<WorldState | null>(null);
   readonly status = signal("Disconnected");
   readonly error = signal("");
@@ -85,7 +197,7 @@ export class SocialService {
   private pending = new Map<
     string,
     {
-      resolve: () => void;
+      resolve: (value?: any) => void;
       reject: (error: Error) => void;
       timer: ReturnType<typeof setTimeout>;
     }
@@ -114,6 +226,7 @@ export class SocialService {
       });
       const body = await res.json();
       if (!res.ok) throw Error(body.error || "Sign-in failed.");
+      if (body.deleted) this.clear();
       if (body.token) {
         this.token = body.token;
         try {
@@ -142,7 +255,9 @@ export class SocialService {
     this.socket = ws;
     ws.onopen = () => {
       if (generation === this.generation)
-        ws.send(JSON.stringify({ type: "hello", token: this.token }));
+        ws.send(
+          JSON.stringify({ type: "hello", token: this.token, patches: true }),
+        );
     };
     ws.onmessage = (event) => {
       if (generation !== this.generation) return;
@@ -150,6 +265,13 @@ export class SocialService {
       if (m.type === "state") {
         this.state.set(m.data);
         this.status.set("Connected");
+      }
+      if (m.type === "patch" && this.state()) {
+        try {
+          this.state.set(applyStatePatch(this.state()!, m.data));
+        } catch {
+          ws.close();
+        }
       }
       if (m.type === "authError") {
         this.error.set("Your session ended. Sign in again.");
@@ -161,7 +283,9 @@ export class SocialService {
       if (request && (m.type === "ack" || m.type === "error")) {
         clearTimeout(request.timer);
         this.pending.delete(m.id);
-        m.type === "ack" ? request.resolve() : request.reject(Error(m.message));
+        m.type === "ack"
+          ? request.resolve(m.data)
+          : request.reject(Error(m.message));
       }
     };
     ws.onclose = () => {
@@ -177,7 +301,7 @@ export class SocialService {
     ws.onerror = () =>
       this.error.set("Cannot reach the local server. Run npm run dev.");
   }
-  command(type: string, data: Record<string, unknown> = {}): Promise<void> {
+  command(type: string, data: Record<string, unknown> = {}): Promise<any> {
     if (
       this.socket?.readyState !== WebSocket.OPEN ||
       this.status() !== "Connected"

@@ -69,9 +69,9 @@ export function installConnected(World) {
       Number.isInteger(x) &&
         Number.isInteger(y) &&
         x >= 0 &&
-        x < 12 &&
+        x < target.width &&
         y >= 0 &&
-        y < 9,
+        y < target.height,
       "Choose a floor tile.",
     );
     const rooms = this.layout(start.home),
@@ -83,6 +83,8 @@ export function installConnected(World) {
         start.home,
       ).map((i) => key(i.room, i.x, i.y)),
     );
+    for (const [u, v] of this.presence)
+      if (u !== id && v.room) obstacles.add(key(v.room, v.x, v.y));
     const canEnter = (r) => {
       try {
         this.room(id, r.id);
@@ -134,9 +136,9 @@ export function installConnected(World) {
           nk = key(...n);
         if (
           nx >= 0 &&
-          nx < 12 &&
+          nx < rooms.find((v) => v.id === nr).width &&
           ny >= 0 &&
-          ny < 9 &&
+          ny < rooms.find((v) => v.id === nr).height &&
           allowed.has(nr) &&
           !obstacles.has(nk) &&
           !prev.has(nk)
@@ -211,9 +213,9 @@ export function installConnected(World) {
         const key = nx + "," + ny;
         if (
           nx >= 0 &&
-          nx < 12 &&
+          nx < rooms.find((v) => v.id === nr).width &&
           ny >= 0 &&
-          ny < 9 &&
+          ny < rooms.find((v) => v.id === nr).height &&
           !blocked.has(key) &&
           !visited.has(key)
         ) {
@@ -323,7 +325,10 @@ export function installConnected(World) {
         room = item.room;
         x = item.x;
         y = item.y + 1;
-        check(y < 9, "Leave one free tile in front of usable furniture.");
+        check(
+          y < this.room(id, room).height,
+          "Leave one free tile in front of usable furniture.",
+        );
       }
       const path = this.walkPath(id, room, x, y);
       check(
@@ -370,7 +375,10 @@ export function installConnected(World) {
         "Keep doorways and their approaches clear.",
       );
       if (ACTIONS[item?.asset])
-        check(d.y < 8, "Usable furniture needs a free approach tile.");
+        check(
+          d.y < r.height - 1,
+          "Usable furniture needs a free approach tile.",
+        );
       const future = this.all(
         "SELECT * FROM items WHERE room=? AND id<>?",
         r.id,
@@ -418,6 +426,9 @@ export function installConnected(World) {
         continue;
       }
       if (
+        [...this.presence.entries()].some(
+          ([u, v]) => u !== id && v.room === r && v.x === x && v.y === y,
+        ) ||
         this.get("SELECT 1 FROM items WHERE room=? AND x=? AND y=?", r, x, y) ||
         (r !== p.room &&
           (target.locked ||
@@ -433,7 +444,7 @@ export function installConnected(World) {
         const follow = p.voice && this.user(id).voice_follow;
         const canCall =
           [...this.presence.values()].filter((v) => v.room === r && v.voice)
-            .length < 6;
+            .length < (this.mediaMode === "livekit" ? 100 : 6);
         if (!follow || !canCall) {
           p.voice = false;
           p.voiceClient = null;

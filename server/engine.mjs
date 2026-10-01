@@ -1,3 +1,6 @@
+import { installDevices } from "./devices.mjs";
+import { migrateCommunity, installCommunity } from "./community.mjs";
+import { migrateBuilder, installBuilder } from "./builder.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { sessionDigest } from "./accounts.mjs";
@@ -127,6 +130,8 @@ export class World {
   CREATE TABLE IF NOT EXISTS bans(home TEXT,user TEXT,PRIMARY KEY(home,user));`);
     migrateConnected(this);
     migrateSocial(this);
+    migrateBuilder(this);
+    migrateCommunity(this);
     // A restart ends presence, not the activity record; stale timers are closed at last persisted online tick.
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS runtime(key TEXT PRIMARY KEY,value INTEGER)",
@@ -167,14 +172,30 @@ export class World {
         );
     }
   }
+  statement(sql) {
+    this.statements ??= new Map();
+    if (!this.statements.has(sql))
+      this.statements.set(sql, this.db.prepare(sql));
+    return this.statements.get(sql);
+  }
   run(sql, ...a) {
-    return this.db.prepare(sql).run(...a);
+    this.readCache?.clear();
+    return this.statement(sql).run(...a);
   }
   get(sql, ...a) {
-    return this.db.prepare(sql).get(...a);
+    if (!this.readCache) return this.statement(sql).get(...a);
+    const key = "get:" + sql + JSON.stringify(a);
+    if (!this.readCache.has(key))
+      this.readCache.set(key, this.statement(sql).get(...a));
+    const row = this.readCache.get(key);
+    return row ? { ...row } : row;
   }
   all(sql, ...a) {
-    return this.db.prepare(sql).all(...a);
+    if (!this.readCache) return this.statement(sql).all(...a);
+    const key = "all:" + sql + JSON.stringify(a);
+    if (!this.readCache.has(key))
+      this.readCache.set(key, this.statement(sql).all(...a));
+    return this.readCache.get(key).map((row) => ({ ...row }));
   }
   tx(fn) {
     const before = this.presence ? structuredClone(this.presence) : null;
@@ -300,6 +321,11 @@ export class World {
       token,
       name,
       band,
+    );
+    this.run(
+      "UPDATE users SET body=? WHERE id=?",
+      band === "teen" ? "miniature" : "mature",
+      id,
     );
     for (const asset of ["chair", "chair", "desk"])
       this.run(
@@ -433,8 +459,15 @@ export class World {
     for (const p of this.presence.values())
       if (p.room === room && p.seat && !ignoreSeat)
         blocked.add(p.x + "," + p.y);
+    const dim = this.layout(
+      this.get("SELECT home FROM rooms WHERE id=?", room).home,
+    ).find((r) => r.id === room);
     const valid = (a, b) =>
-      a >= 0 && a < 12 && b >= 0 && b < 9 && !blocked.has(a + "," + b);
+      a >= 0 &&
+      a < dim.width &&
+      b >= 0 &&
+      b < dim.height &&
+      !blocked.has(a + "," + b);
     if (!valid(tx, ty)) return null;
     const q = [[x, y]],
       prev = new Map([[x + "," + y, null]]);
@@ -666,8 +699,16 @@ export class World {
           assert(
             [...this.presence.values()].filter(
               (v) => v.room === p.room && v.voice,
-            ).length < 6 || p.voice,
-            "This local call supports 6 people.",
+            ).length < (this.mediaMode === "livekit" ? 100 : 6) || p.voice,
+            this.mediaMode === "livekit"
+              ? "Pilot voice capacity reached."
+              : "This local call supports 6 people.",
+          );
+          assert(
+            !d.video ||
+              p.video ||
+              [...this.presence.values()].filter((v) => v.video).length < 10,
+            "The pilot supports 10 simultaneous cameras.",
           );
           p.voice = true;
           p.voiceClient = clientId;
@@ -724,7 +765,7 @@ export class World {
       }
       case "capacity": {
         const r = this.room(id, d.room);
-        this.owner(id, r.home);
+        this.owner(id, r.home, r.id);
         assert(
           Number.isInteger(d.capacity) &&
             d.capacity >= 0 &&
@@ -847,7 +888,7 @@ export class World {
       }
       case "place": {
         const r = this.room(id, d.room);
-        this.owner(id, r.home);
+        this.owner(id, r.home, r.id);
         const item = this.get("SELECT * FROM items WHERE id=?", d.item);
         assert(item, "Item not found.");
         assert(
@@ -862,9 +903,9 @@ export class World {
           Number.isInteger(d.x) &&
             Number.isInteger(d.y) &&
             d.x >= 0 &&
-            d.x < 12 &&
+            d.x < r.width &&
             d.y >= 0 &&
-            d.y < 9,
+            d.y < r.height,
           "Choose a valid floor tile.",
         );
         assert(!(d.x === 5 && d.y === 7), "Keep the entrance clear.");
@@ -891,7 +932,7 @@ export class World {
             r.id,
             d.x,
             d.y,
-            d.rotation === 1 ? 1 : 0,
+            Number.isInteger(d.rotation) ? ((d.rotation % 4) + 4) % 4 : 0,
             item.id,
           );
           this.validateLayout(r.id);
@@ -918,9 +959,8 @@ export class World {
         assert(
           (item.owner_type === "user" && item.owner === id) ||
             (item.room &&
-              this.home(
-                this.get("SELECT home FROM rooms WHERE id=?", item.room).home,
-              ).owner === id),
+              ['owner','admin'].includes(this.role(id,
+                this.get("SELECT home FROM rooms WHERE id=?", item.room).home,item.room))),
           "You cannot move this item.",
         );
         this.clearPlacement(item.id);
@@ -928,7 +968,7 @@ export class World {
       }
       case "theme": {
         const r = this.room(id, d.room);
-        this.owner(id, r.home);
+        this.owner(id, r.home, r.id);
         assert(
           this.get(
             "SELECT 1 FROM items WHERE owner_type='user' AND owner=? AND asset=?",
@@ -1182,7 +1222,7 @@ export class World {
             };
           }),
         messages: this.all(
-          "SELECT m.*,u.name,u.color FROM messages m JOIN users u ON m.user=u.id WHERE room=? ORDER BY time DESC LIMIT 100",
+          "SELECT m.*,u.name,u.color FROM messages m JOIN users u ON m.user=u.id WHERE room=? ORDER BY time DESC,m.rowid DESC LIMIT 100",
           r.id,
         )
           .filter((m) => !this.blocked(id, m.user))
@@ -1238,3 +1278,9 @@ export class World {
 installConnected(World);
 
 installSocial(World);
+
+installBuilder(World);
+
+installCommunity(World);
+
+installDevices(World);

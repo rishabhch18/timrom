@@ -1,9 +1,10 @@
+import { applyStatePatch } from "../src/shared/state-patch.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { WebSocket } from "ws";
 import { startServer } from "../server/index.mjs";
-async function client(port, name, band = "adult") {
+async function client(port, name, band = "adult", patches = false) {
   const res = await fetch(`http://127.0.0.1:${port}/api/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -31,8 +32,13 @@ async function client(port, name, band = "adult") {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/socket`);
   const queue = [],
     waiters = [];
+  let state;
   ws.on("message", (data) => {
-    const m = JSON.parse(data);
+    let m = JSON.parse(data);
+    if (m.type === "patch") {
+      state = applyStatePatch(state, m.data);
+      m = { type: "state", data: state, patched: true };
+    } else if (m.type === "state") state = m.data;
     queue.push(m);
     for (const w of [...waiters])
       if (w.predicate(m)) {
@@ -57,7 +63,7 @@ async function client(port, name, band = "adult") {
       waiters.push(w);
     });
   };
-  ws.send(JSON.stringify({ type: "hello", token: account.token }));
+  ws.send(JSON.stringify({ type: "hello", token: account.token, patches }));
   await wait((m) => m.type === "state");
   let counter = 0;
   return {
@@ -137,7 +143,8 @@ test("HTTP and real WebSocket clients share durable chat, full-room decisions, p
         m.data.room?.id === r.id &&
         m.data.room.people.length === 1,
     );
-    assert.equal(app.world.count(r.id), 1);
+    assert.equal(app.world.count(r.id), 2); // One online occupant plus a 30-second reconnect reservation.
+    assert.equal(app.world.reservationsFor(r.id).length, 1);
   } finally {
     for (const peer of [a, b, c]) peer?.ws.terminate();
     await app.close();
@@ -163,6 +170,32 @@ test("foreign HTTP origin and untrusted WebSocket origin are refused", async () 
     await once(ws, "close");
     assert.equal(app.world.all("SELECT * FROM users").length, 0);
   } finally {
+    await app.close();
+  }
+});
+
+test("negotiated WebSocket deltas retain complete client state after home creation and chat", async () => {
+  const app = startServer({ port: 0, dbPath: ":memory:", seed: false });
+  await once(app.server, "listening");
+  let a;
+  try {
+    a = await client(app.server.address().port, "DeltaTester", "adult", true);
+    await a.send("createHome", { name: "Delta home" });
+    await a.wait((m) => m.type === "state" && m.data.room);
+    await a.send("chat", {
+      body: "Delta transport check",
+      nonce: "delta-message",
+    });
+    const result = await a.wait(
+      (m) =>
+        m.type === "state" &&
+        m.data.room?.messages.some((v) => v.body === "Delta transport check"),
+    );
+    assert.equal(result.patched, true);
+    assert.equal(result.data.me.username, "deltatester");
+    assert.equal(result.data.scene.home, result.data.room.home);
+  } finally {
+    a?.ws.terminate();
     await app.close();
   }
 });

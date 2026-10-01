@@ -1,23 +1,80 @@
+import { UiTextPipe } from "./ui-text.pipe";
+import { BuilderComponent } from "./builder.component";
+import { CommunityPanelComponent } from "./community-panel.component";
 import { Component, effect, inject, signal } from "@angular/core";
 import { CallService } from "./call.service";
 import { SocialService, Home, Item } from "./social.service";
 import { ConnectedWorldComponent } from "./connected-world.component";
 @Component({
   selector: "timrom-social",
-  imports: [ConnectedWorldComponent],
+  imports: [
+    UiTextPipe,
+    ConnectedWorldComponent,
+    BuilderComponent,
+    CommunityPanelComponent,
+  ],
   templateUrl: "./social.component.html",
 })
 export class SocialComponent {
   readonly call = inject(CallService);
   readonly api = inject(SocialService);
   readonly panel = signal("homes");
+  readonly adminHome=signal("");
   readonly signup = signal(false);
+  readonly recover = signal(false);
   readonly method = signal("email");
   readonly challenge = signal("");
   readonly code = signal("");
   readonly selected = signal<Item | null>(null);
   readonly placement = signal<Item | null>(null);
   readonly rotation = signal(0);
+  readonly search = signal("");
+  readonly filterGenre = signal("");
+  readonly filterRegion = signal("");
+  readonly filterCountry = signal("");
+  readonly filterState = signal("");
+  readonly filterCity = signal("");
+  readonly globeLongitude = signal(78);
+  readonly chatExpanded = signal(false);
+  readonly reply = signal("");
+  readonly editing = signal("");
+  t(en: string, hi: string) {
+    return this.api.state()?.me.preferences?.["language"] === "hi" ? hi : en;
+  }
+  homes() {
+    return (this.api.state()?.homes || []).filter(
+      (h) =>
+        (!this.filterGenre() || h.genre === this.filterGenre()) &&
+        (!this.filterRegion() || h.region === this.filterRegion()) &&
+        [h.name, h.city, h.country, h.state]
+          .join(" ")
+          .toLowerCase()
+          .includes(this.search().toLowerCase()) &&
+        (!this.filterCountry() ||
+          h.country
+            .toLowerCase()
+            .includes(this.filterCountry().toLowerCase())) &&
+        (!this.filterState() ||
+          h.state.toLowerCase().includes(this.filterState().toLowerCase())) &&
+        (!this.filterCity() ||
+          h.city.toLowerCase().includes(this.filterCity().toLowerCase())),
+    );
+  }
+  globe(h: Home) {
+    if (h.latitude == null || h.longitude == null) return null;
+    const lat = (h.latitude * Math.PI) / 180,
+      lon = ((h.longitude - this.globeLongitude()) * Math.PI) / 180;
+    return Math.cos(lon) < 0
+      ? null
+      : {
+          x: 100 + 88 * Math.cos(lat) * Math.sin(lon),
+          y: 100 - 88 * Math.sin(lat),
+        };
+  }
+  unread() {
+    return this.api.state()?.notifications.filter((n) => !n.seen).length || 0;
+  }
+
   private accountId = "";
   constructor() {
     effect(() => {
@@ -52,7 +109,7 @@ export class SocialComponent {
   }
   audible(id: string) {
     const p = this.api.state()?.room?.people.find((p) => p.id === id);
-    return !!p?.speaker && !p?.muted && !p?.blocked;
+    return !!p?.speaker && !p?.muted && !p?.blocked && !p?.personalMuted;
   }
   cryptoId() {
     return crypto.randomUUID();
@@ -73,11 +130,13 @@ export class SocialComponent {
       const r = await this.api.auth(
         this.challenge()
           ? "verify"
-          : this.signup()
-            ? "signup"
-            : this.method() === "phone"
-              ? "mobile"
-              : "login",
+          : this.recover()
+            ? "reset"
+            : this.signup()
+              ? "signup"
+              : this.method() === "phone"
+                ? "mobile"
+                : "login",
         { ...d, kind: this.method(), challenge: this.challenge() },
       );
       if (r["challenge"]) {
@@ -99,12 +158,17 @@ export class SocialComponent {
     if (data["capacity"] !== undefined)
       data["capacity"] = data["capacity"] === "" ? 8 : Number(data["capacity"]);
     if (type === "chat") {
+      data["reply"] = this.reply() || undefined;
       data["nonce"] = crypto.randomUUID();
     }
     void this.api
       .command(type, data)
       .then(() => {
-        if (type === "chat") form.reset();
+        if (type === "chat") {
+          form.reset();
+          this.reply.set("");
+        }
+        if (type === "editMessage") this.editing.set("");
         if (type === "createHome" || type === "invite") this.panel.set("");
       })
       .catch((e) => this.api.error.set(e.message));

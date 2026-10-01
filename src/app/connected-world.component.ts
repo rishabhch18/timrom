@@ -33,7 +33,12 @@ import { WorldState, Item } from "./social.service";
         ◎
       </button>
     </div>`,
-  host: { class: "connected-world" },
+  host: {
+    class: "connected-world",
+    tabindex: "0",
+    "aria-label": "Home world. Arrow keys to walk, W to wave.",
+    "(keydown)": "keyboard($event)",
+  },
 })
 export class ConnectedWorldComponent {
   readonly state = input.required<WorldState>();
@@ -51,6 +56,29 @@ export class ConnectedWorldComponent {
       this.disposed = true;
       this.engine?.destroy();
     });
+  }
+  keyboard(e: KeyboardEvent) {
+    if ((e.target as HTMLElement).closest("input,textarea,select,button"))
+      return;
+    const s = this.state(),
+      me = s.scene?.people.find((p) => p.id === s.me.id);
+    if (!me) return;
+    const delta: Record<string, number[]> = {
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+    };
+    if (delta[e.key]) {
+      e.preventDefault();
+      const [dx, dy] = delta[e.key];
+      this.command.emit({
+        type: "move",
+        data: { room: me.room, x: me.x + dx, y: me.y + dy },
+      });
+    }
+    if (e.key.toLowerCase() === "w")
+      this.command.emit({ type: "wave", data: {} });
   }
   private async mount() {
     try {
