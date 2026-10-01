@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>One World · art & motion studio</title>
+    <link rel="stylesheet" href="studio.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./node_modules/three/build/three.module.js",
+          "three/addons/": "./node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="#">one world <span>DESIGN STUDIO</span></a>
+      <nav>
+        <a href="#concepts">Art directions</a
+        ><a href="#motion">Motion lab ↗</a>
+      </nav>
+    </header>
+    <main>
+      <section class="intro">
+        <span class="eyebrow">CONNECTED SPACES / ROUND TWO</span>
+        <h1>A world you move through.<br />A place you feel part of.</h1>
+        <p>
+          Three visual directions. Five live motion studies. Your choice comes
+          first.
+        </p>
+        <span class="tag">Soft sculpted approved · motion refinement</span>
+      </section>
+      <section id="concepts">
+        <div class="section-heading">
+          <h2>01 — Choose the feeling</h2>
+          <span>Tap an image to explore it full size.</span>
+        </div>
+        <div class="concept-grid">
+          <article>
+            <a href="A-soft-sculpted.png" target="_blank"
+              ><img
+                src="A-soft-sculpted.png"
+                alt="A: soft sculpted 3D connected rooms with miniature and mature avatar proportions"
+            /></a>
+            <div>
+              <span class="concept-letter">A</span>
+              <h3>Soft sculpted</h3>
+              <p>Airy rooms. Rounded shapes. A calm, polished dollhouse.</p>
+              <button data-art="A">Shortlist A <span>♡</span></button>
+            </div>
+          </article>
+          <article>
+            <a href="B-living-miniature.png" target="_blank"
+              ><img
+                src="B-living-miniature.png"
+                alt="B: immersive stylized 3D lounge with views through open doorways"
+            /></a>
+            <div>
+              <span class="concept-letter">B</span>
+              <h3>Living miniature</h3>
+              <p>Closer to the characters. Cozy materials. Expressive faces.</p>
+              <button data-art="B">Shortlist B <span>♡</span></button>
+            </div>
+          </article>
+          <article>
+            <a href="C-illustrated-neighbourhood.png" target="_blank"
+              ><img
+                src="C-illustrated-neighbourhood.png"
+                alt="C: illustrated connected home and expressive character artwork"
+            /></a>
+            <div>
+              <span class="concept-letter">C</span>
+              <h3>Illustrated neighbourhood</h3>
+              <p>Warm illustration. Rich details. A storybook home.</p>
+              <button data-art="C">Shortlist C <span>♡</span></button>
+            </div>
+          </article>
+        </div>
+        <p class="footnote">
+          These are generated still concepts, not game screenshots or rigged
+          characters. Decorative details are suggestions. A and B show body
+          proportions; C is a room-and-character illustration direction.
+        </p>
+      </section>
+      <section id="motion">
+        <div class="section-heading">
+          <h2>02 — Feel the movement</h2>
+          <span>Live 3D · play, pause, slow down</span>
+        </div>
+        <div class="motion-shell">
+          <div class="motion-top">
+            <div>
+              <span class="live-dot"></span
+              ><strong id="motion-title">Walk through connected rooms</strong
+              ><small id="status">Preparing the scene…</small>
+            </div>
+            <div class="controls">
+              <button id="view" title="Toggle whole-home and character camera">
+                ◎ Follow avatar</button
+              ><button id="body" title="Toggle avatar proportions">
+                ↕ Mature</button
+              ><button id="pause" aria-label="Pause animation">Ⅱ</button>
+            </div>
+          </div>
+          <div id="stage">
+            <canvas
+              aria-label="Interactive 3D motion preview showing a character in connected rooms"
+            ></canvas>
+            <div id="fallback" hidden>
+              WebGL is unavailable here. Open this page in a browser with
+              hardware acceleration to view the animations.
+            </div>
+            <div class="stage-badge">MOTION STUDY · SIMPLIFIED CHARACTER</div>
+            <div class="stage-hint">Drag to orbit · Scroll to zoom</div>
+          </div>
+          <div class="motion-tabs" role="group" aria-label="Animation samples">
+            <button data-motion="idle"><span>01</span> Breathe & blink</button
+            ><button data-motion="walk" class="active">
+              <span>02</span> Walk through doors</button
+            ><button data-motion="sit"><span>03</span> Sit & stand</button
+            ><button data-motion="wave"><span>04</span> Wave hello</button
+            ><button data-motion="rest"><span>05</span> Rest & wake</button>
+          </div>
+          <div class="motion-bottom">
+            <p id="motion-description">
+              A continuous route through the lounge, study and kitchen. No
+              room-navigation buttons or scene swaps.
+            </p>
+            <label
+              >Speed
+              <input
+                id="speed"
+                type="range"
+                min="0.25"
+                max="1.5"
+                step="0.25"
+                value="1"
+              /><output id="speed-label">1×</output></label
+            >
+          </div>
+        </div>
+        <p class="footnote">
+          This separately built 3D rig demonstrates timing, posture and
+          connected-space movement. It does not animate the illustrated
+          characters above and is not a final character model. Door access,
+          occupancy and voice are not simulated in this motion study.
+        </p>
+      </section>
+      <section class="review-note">
+        <div>
+          <span class="eyebrow">MIXING IS WELCOME</span>
+          <h2>You can choose A’s room,<br />B’s face, and a different walk.</h2>
+        </div>
+        <div>
+          <p id="shortlist">No art direction shortlisted yet.</p>
+          <p>
+            Soft sculpted is approved. Alternative shortlists remain local
+            references; they do not change your confirmed choice.
+          </p>
+          <button id="clear">Clear alternative shortlist</button>
+        </div>
+      </section>
+    </main>
+    <footer>
+      One World / local design review
+      <span>Art, camera and motion are separate decisions.</span>
+    </footer>
+    <script type="module" src="studio.js"></script>
+  </body>
+</html>

@@ -1,0 +1,66 @@
+<main class="main">
+    <section class="stage" id="stage" data-tod="day">
+      <div class="skyfade"></div>
+      <canvas id="scene" tabindex="-1" aria-label="Your 3D home. Tap a room object to start a timer."></canvas>
+      <div class="vignette"></div>
+      <div class="labels" id="labels"></div>
+      <div class="park-help" id="parkHelp" hidden>Click the grass to walk, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · Press <kbd>Enter</kbd> to chat</div>
+      <div class="home-card" id="homeCard">
+        <div class="eyebrow" id="hcEyebrow">Your little corner of the world</div>
+        <h1 id="hcTitle">Home</h1>
+        <div class="status" id="hcStatus">Tap a room to start a timer.</div>
+        <div class="rooms" id="hcRooms">Study · Kitchen · Bedroom · Bath · Living</div>
+      </div>
+      <div class="weather" id="weather"><div><b class="num" id="wClock">9:41</b><span id="wTod">Day</span></div><svg class="i" id="wIcon"><use href="#i-sun"/></svg></div>
+      <div class="hint" id="hint">
+        <div class="ic"><svg class="i"><use href="#i-sparkle"/></svg></div>
+        <div><b>Tap anything in your home.</b><span>The desk, stove, bed, bath, TV or front door. Each one starts a routine timer. Online time earns XP; real interaction earns coins.</span></div>
+        <button class="x" id="hintX" aria-label="Dismiss"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="view-ctrl">
+        <button id="zOut" aria-label="Zoom out"><svg class="i"><use href="#i-minus"/></svg></button>
+        <button id="zIn" aria-label="Zoom in"><svg class="i"><use href="#i-plus"/></svg></button>
+        <span class="sep"></span>
+        <button id="rot" aria-label="Rotate view"><svg class="i"><use href="#i-rotate"/></svg></button>
+        <button id="recenter" aria-label="Recenter"><svg class="i"><use href="#i-target"/></svg></button>
+      </div>
+      <div class="tray" id="tray" hidden>
+        <div class="tray-tabs" id="trayTabs"></div>
+        <div class="tray-list" id="trayList"></div>
+      </div>
+      <div class="toasts" id="toasts"></div>
+      <div class="popcard" id="popcard" hidden></div>
+      <div class="loader" id="loader"><div class="in"><b>Timrom</b><span id="loadTxt">Building your home</span><div class="bar"><i></i></div></div></div>
+    </section>
+
+    <aside class="side" id="side">
+      <div id="sideHome"></div>
+      <div id="sideBuild" hidden></div>
+      <div id="sideHood" hidden></div>
+      <div id="sidePark" hidden></div>
+    </aside>
+    <section class="chat" id="chat" hidden aria-label="Messages"></section>
+  </main>
+
+  <footer class="dock">
+    <div class="household" id="household"></div>
+    <div class="timer" id="timerDock">
+      <div class="ctl">
+        <button id="tPause" aria-label="Pause"><svg class="i"><use href="#i-pause"/></svg></button>
+        <button id="tStop" aria-label="End session"><svg class="i"><use href="#i-stop"/></svg></button>
+      </div>
+      <div class="mid"><div class="lab" id="tLab">Ready when you are</div><div class="clock num" id="tClock">25:00</div></div>
+      <button class="speed" id="tSpeed" title="Demo speed makes one real second count as one minute">60× demo</button>
+      <button class="tod" id="tTod" aria-label="Change time of day"><svg class="i"><use href="#i-sun"/></svg></button>
+      <div class="prog" id="tProg" style="width:0"></div>
+    </div>
+    <div class="music" id="music">
+      <div class="viz" id="viz"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="trk"><b id="mName">Rainy desk</b><span>Lo-fi radio</span></div>
+      <button class="mb" id="mList" aria-label="Tracks"><svg class="i"><use href="#i-music"/></svg></button>
+      <button class="mb" id="mPrev" aria-label="Previous track"><svg class="i"><use href="#i-prev"/></svg></button>
+      <button class="mb play" id="mPlay" aria-label="Play music"><svg class="i fill" id="mPlayIc"><use href="#i-play"/></svg></button>
+      <button class="mb" id="mNext" aria-label="Next track"><svg class="i"><use href="#i-next"/></svg></button>
+      <div class="music-pop" id="musicPop" hidden></div>
+    </div>
+  </footer>

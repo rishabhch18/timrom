@@ -1,5 +1,15 @@
-﻿.claude/
+node_modules/
+dist/
+.angular/
+out-tsc/
+*.log
+.DS_Store
+.claude/
 patch.py
 __pycache__/
 *.pyc
 
+data/
+.env
+.env.*
+!.env.example

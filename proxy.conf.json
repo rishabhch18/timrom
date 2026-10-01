@@ -1,0 +1,11 @@
+{
+  "/api/**": {
+    "target": "http://127.0.0.1:3012",
+    "secure": false
+  },
+  "/socket": {
+    "target": "http://127.0.0.1:3012",
+    "ws": true,
+    "secure": false
+  }
+}

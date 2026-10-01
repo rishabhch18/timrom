@@ -1,0 +1,559 @@
+<div class="social-app">
+  <header class="social-top">
+    <a class="social-brand" href="/">Timrom<span>.</span></a
+    ><span class="local-badge">Connected local build</span>
+    @if (api.state(); as s) {
+      <nav aria-label="Home tools">
+        <button title="Discover and joined homes" (click)="toggle('homes')">
+          🌐</button
+        ><button title="Create home" (click)="toggle('create')">⌂＋</button
+        ><button title="Activities" (click)="toggle('activities')">◷</button
+        ><button title="Inventory" (click)="toggle('inventory')">▣</button
+        ><button
+          title="Preferences and room settings"
+          (click)="toggle('settings')"
+        >
+          ⚙
+        </button>
+      </nav>
+      <span>{{ s.me.xp }} XP · {{ s.me.coins }} 🪙</span
+      ><button (click)="api.logout()" title="Sign out">↪</button>
+    }
+    <a href="?preview=1">Visual demo</a>
+  </header>
+  @if (api.error()) {
+    <div class="social-error" role="alert">
+      {{ api.error()
+      }}<button aria-label="Dismiss error" (click)="api.error.set('')">
+        ×
+      </button>
+    </div>
+  }
+  @if (!api.state()) {
+    <main class="auth-wrap">
+      <section class="auth-card">
+        <span class="eyebrow">A place for your people</span>
+        <h1>
+          {{
+            challenge()
+              ? "Verify your contact"
+              : signup()
+                ? "Come on in."
+                : "Welcome back."
+          }}
+        </h1>
+        <p>Homes for conversation, focus and everything in between.</p>
+        <form (submit)="account($event)">
+          @if (challenge()) {
+            <p class="test-notice">
+              Local test delivery — no SMS or email was sent. Test code:
+              <strong>{{ code() }}</strong>
+            </p>
+            <label
+              >Verification code<input
+                name="code"
+                required
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                maxlength="6"
+            /></label>
+          } @else {
+            <div class="segmented">
+              <button
+                type="button"
+                [class.active]="method() === 'email'"
+                (click)="method.set('email')"
+              >
+                Email</button
+              ><button
+                type="button"
+                [class.active]="method() === 'phone'"
+                (click)="method.set('phone')"
+              >
+                Mobile
+              </button>
+            </div>
+            @if (signup()) {
+              <label
+                >Display name<input
+                  name="name"
+                  required
+                  minlength="2"
+                  maxlength="24"
+                  autocomplete="nickname" /></label
+              ><label
+                >&#64;username<input
+                  name="username"
+                  required
+                  minlength="3"
+                  maxlength="24"
+                  autocomplete="username" /></label
+              ><label
+                >Age group
+                <select name="band">
+                  <option value="adult">18+ adults</option>
+                  <option value="teen">13–17 teens</option>
+                </select></label
+              ><small
+                >Local age fixtures only; this is not age verification.</small
+              >
+            }
+            <label
+              >{{ method() === "email" ? "Email" : "Mobile with country code"
+              }}<input
+                name="contact"
+                [type]="method() === 'email' ? 'email' : 'tel'"
+                required
+                [autocomplete]="method() === 'email' ? 'email' : 'tel'"
+            /></label>
+            @if (method() === "email") {
+              <label
+                >Password<input
+                  name="password"
+                  type="password"
+                  required
+                  minlength="10"
+                  [autocomplete]="
+                    signup() ? 'new-password' : 'current-password'
+                  "
+              /></label>
+            }
+          }
+          <button class="primary" [disabled]="api.busy()">
+            {{
+              api.busy()
+                ? "Please wait…"
+                : challenge()
+                  ? "Verify"
+                  : signup()
+                    ? "Create account"
+                    : method() === "phone"
+                      ? "Get test code"
+                      : "Sign in"
+            }}
+          </button>
+        </form>
+        <button
+          class="text-button"
+          (click)="signup.set(!signup()); challenge.set(''); api.error.set('')"
+        >
+          {{
+            signup()
+              ? "Already have an account? Sign in"
+              : "New here? Create an account"
+          }}
+        </button>
+        <p class="subtle">
+          Private contact details · Separate teen and adult spaces
+        </p>
+      </section>
+      <div class="auth-art" aria-hidden="true">
+        <div class="house-art">⌂</div>
+        <span>Gather. Belong. Grow.</span>
+      </div>
+    </main>
+  } @else {
+    @let s = api.state()!;
+    <div class="social-status">
+      {{ api.status() }} · {{ s.me.name }} · &#64;{{ s.me.username }} ·
+      {{ s.me.band === "teen" ? "Teen spaces" : "Adult spaces" }}
+      @if (s.room) {
+        · {{ home()?.name }} / {{ s.room.name }} · {{ s.room.count }}/{{
+          s.room.capacity || "∞"
+        }}
+      }
+    </div>
+    <main class="social-layout">
+      <section class="world-area">
+        @if (s.room) {
+          <timrom-connected-world
+            [state]="s"
+            (command)="worldCommand($event)"
+            (item)="selected.set($event)"
+            (failure)="api.error.set($event)"
+          />
+        } @else {
+          <div class="empty-world">
+            <span>⌂</span>
+            <h1>Find your people.</h1>
+            <p>Discover a community, use an invitation, or create a home.</p>
+            <button class="primary" (click)="panel.set('create')">
+              Create home
+            </button>
+            <p>No personal house is created automatically.</p>
+          </div>
+        }
+        @if (placement(); as item) {
+          <div class="action-menu">
+            <b>Place {{ item.asset }}: click a floor tile</b
+            ><button (click)="rotation.set((rotation() + 1) % 4)">
+              Rotate {{ rotation() * 90 }}°</button
+            ><button (click)="placement.set(null)">Cancel</button>
+          </div>
+        }
+        @if (selected(); as item) {
+          <div class="action-menu" role="dialog" aria-label="Furniture actions">
+            <b>{{ item.asset }}</b>
+            @for (action of actions(item); track action) {
+              <button (click)="act(action)">{{ action }}</button>
+            }
+            <button (click)="selected.set(null)">×</button>
+          </div>
+        }
+        @if (panel()) {
+          <section class="social-panel" aria-label="Home tools">
+            <button
+              class="close-panel"
+              aria-label="Close panel"
+              (click)="panel.set('')"
+            >
+              ×
+            </button>
+            @switch (panel()) {
+              @case ("homes") {
+                <h2>Your neighbourhood</h2>
+                <form (submit)="form($event, 'invite')">
+                  <label>Invitation code<input name="code" required /></label
+                  ><button class="primary">Join by invite</button>
+                </form>
+                <div class="home-list">
+                  @for (h of s.homes; track h.id) {
+                    <article>
+                      <span>{{ h.member ? "Joined" : "Discover" }}</span>
+                      <h3>{{ h.name }}</h3>
+                      <p>{{ h.genre }} · {{ h.city }} · {{ h.band }}</p>
+                      @if (!h.member) {
+                        <button (click)="join(h)">
+                          Accept home rules &amp; join
+                        </button>
+                      }
+                      <button (click)="enter(h)">
+                        {{ h.member ? "Visit home" : "Visit forum" }}
+                      </button>
+                      @if (h.invite) {
+                        <p>
+                          Invite: <code>{{ h.invite }}</code>
+                        </p>
+                      }
+                    </article>
+                  } @empty {
+                    <p>No homes yet. Create one or use an invitation.</p>
+                  }
+                </div>
+              }
+              @case ("create") {
+                <h2>Create a home</h2>
+                <form (submit)="form($event, 'createHome')">
+                  <label
+                    >Name<input
+                      name="name"
+                      required
+                      minlength="3"
+                      maxlength="48" /></label
+                  ><label
+                    >Free template<select name="template">
+                      <option>Hangout</option>
+                      <option>Study</option>
+                      <option>Gaming</option>
+                      <option>Work</option>
+                    </select></label
+                  ><label>Country<input name="country" value="India" /></label
+                  ><label>State<input name="state" /></label
+                  ><label>City<input name="city" /></label>
+                  <p>
+                    Invite-only · Free starter furniture ·
+                    {{ s.me.band }} community
+                  </p>
+                  <button class="primary">Create home</button>
+                </form>
+              }
+              @case ("settings") {
+                <h2>Preferences</h2>
+                <label class="check"
+                  ><input
+                    type="checkbox"
+                    [checked]="s.me.auto"
+                    (change)="
+                      api.run('auto', { enabled: $any($event.target).checked })
+                    "
+                  />Opt in to room-based tracking</label
+                ><label class="check"
+                  ><input
+                    type="checkbox"
+                    [checked]="s.me.furniture_auto"
+                    (change)="
+                      api.run('furnitureAuto', {
+                        enabled: $any($event.target).checked,
+                      })
+                    "
+                  />Opt in to furniture-based tracking</label
+                ><label class="check"
+                  ><input
+                    type="checkbox"
+                    [checked]="s.me.voice_follow"
+                    (change)="
+                      api.run('voiceFollow', {
+                        enabled: $any($event.target).checked,
+                      })
+                    "
+                  />Remember automatic voice joining</label
+                >
+                @if (s.room && manage()) {
+                  <h2>{{ s.room.name }}</h2>
+                  <form
+                    (submit)="form($event, 'capacity', { room: s.room.id })"
+                  >
+                    <label
+                      >Capacity · 0 = unlimited<input
+                        type="range"
+                        min="0"
+                        max="100"
+                        [value]="s.room.capacity"
+                        (input)="cap.value = $any($event.target).value" /><input
+                        #cap
+                        name="capacity"
+                        type="number"
+                        min="0"
+                        max="10000"
+                        [value]="s.room.capacity" /></label
+                    ><button>Save capacity</button>
+                  </form>
+                  <label
+                    >Voice mode<select
+                      [value]="s.room.voice_mode"
+                      (change)="
+                        api.run('voiceMode', {
+                          room: s.room.id,
+                          mode: $any($event.target).value,
+                        })
+                      "
+                    >
+                      <option value="open">Open conversation</option>
+                      <option value="moderated">Moderated speakers</option>
+                      <option value="disabled">Quiet room</option>
+                    </select></label
+                  ><label class="check"
+                    ><input
+                      type="checkbox"
+                      [checked]="s.room.locked"
+                      (change)="
+                        api.run('lock', {
+                          room: s.room.id,
+                          locked: $any($event.target).checked,
+                        })
+                      "
+                    />Lock new entry</label
+                  >
+                  <h3>Add connected room</h3>
+                  <form
+                    (submit)="form($event, 'createRoom', { home: s.room.home })"
+                  >
+                    <label
+                      >Name<input name="name" required minlength="2" /></label
+                    ><label
+                      >Activity<select name="kind">
+                        @for (kind of activityKinds; track kind) {
+                          <option>{{ kind }}</option>
+                        }
+                      </select></label
+                    ><label
+                      >Capacity<input
+                        name="capacity"
+                        type="number"
+                        min="0"
+                        max="10000"
+                        placeholder="8" /></label
+                    ><button>Add room</button>
+                  </form>
+                  @if (home()?.role === "owner") {
+                    <h3>Home roles</h3>
+                    @for (member of home()?.members; track member.id) {
+                      @if (member.id !== s.me.id) {
+                        <label
+                          >{{ member.name
+                          }}<select
+                            (change)="
+                              api.run('role', {
+                                home: s.room.home,
+                                user: member.id,
+                                role: $any($event.target).value,
+                              })
+                            "
+                          >
+                            <option value="member">Member</option>
+                            <option value="admin">Admin</option>
+                            <option value="moderator">Moderator</option>
+                          </select></label
+                        >
+                      }
+                    }
+                  }
+                }
+              }
+              @case ("activities") {
+                <h2>Your routines</h2>
+                <form
+                  (submit)="form($event, 'activity', { visibility: 'private' })"
+                >
+                  <label
+                    >Start activity<select name="kind">
+                      @for (kind of activityKinds; track kind) {
+                        <option>{{ kind }}</option>
+                      }
+                    </select></label
+                  ><button>Start privately</button>
+                </form>
+                <button (click)="api.run('activityStop')">Stop activity</button>
+                <p>
+                  Manual routines can continue offline as history; rewards
+                  require being connected.
+                </p>
+                @for (a of s.activities; track a.id) {
+                  <article>
+                    <b>{{ a.kind }}</b> ·
+                    {{ a.end ? "Completed" : "In progress" }}
+                    <button
+                      aria-label="Delete activity"
+                      (click)="api.run('activityDelete', { id: a.id })"
+                    >
+                      ×
+                    </button>
+                  </article>
+                }
+              }
+              @case ("inventory") {
+                <h2>Your inventory</h2>
+                <p>{{ s.me.coins }} coins · Level {{ s.me.level }}</p>
+                @for (item of s.items; track item.id) {
+                  <article>
+                    <b>{{ item.asset }}</b> ·
+                    {{ item.room ? "Placed" : "Stored" }}
+                    @if (s.room && manage()) {
+                      @if (item.asset === "sage" || item.asset === "rose") {
+                        <button
+                          (click)="
+                            api.run('theme', {
+                              room: s.room.id,
+                              asset: item.asset,
+                            })
+                          "
+                        >
+                          Apply finish
+                        </button>
+                      } @else {
+                        <button (click)="place(item)">Place / move</button>
+                      }
+                    }
+                    @if (item.room) {
+                      <button (click)="api.run('store', { item: item.id })">
+                        Store
+                      </button>
+                    }
+                  </article>
+                }
+                <h3>Catalog</h3>
+                @for (item of s.catalog; track item.id) {
+                  <article>
+                    <b>{{ item.name }}</b>
+                    <p>{{ item.price }} coins · Level {{ item.level }}</p>
+                    <button
+                      [disabled]="
+                        s.me.coins < item.price || s.me.level < item.level
+                      "
+                      (click)="
+                        api.run('buy', { asset: item.id, nonce: cryptoId() })
+                      "
+                    >
+                      Buy one
+                    </button>
+                  </article>
+                }
+              }
+            }
+          </section>
+        }
+      </section>
+      <aside class="room-chat">
+        <h2>{{ s.room?.name || "Room chat" }}</h2>
+        @if (s.room) {
+          <div class="call-controls">
+            @if (!call.joined()) {
+              <button
+                [disabled]="call.busy() || s.room.voice_mode === 'disabled'"
+                (click)="call.join()"
+              >
+                Join voice
+              </button>
+            } @else {
+              <button [disabled]="call.busy()" (click)="call.toggleMic()">
+                {{ call.muted() ? "🎙 Unmute" : "Mute" }}</button
+              ><button [disabled]="call.busy()" (click)="call.toggleCamera()">
+                {{ call.camera() ? "Camera off" : "Camera" }}</button
+              ><button (click)="call.toggleDeafen()">
+                {{ call.deafened() ? "Listen" : "Deafen" }}</button
+              ><button (click)="call.leave()">Leave</button>
+              @if (s.room.voice_mode === "moderated") {
+                <button (click)="api.run('raiseHand', { raised: true })">
+                  ✋
+                </button>
+              }
+            }
+            <small
+              >Local media: 6 participants · relay/SFU integration
+              pending</small
+            >
+          </div>
+          <div class="video-tiles">
+            @for (remote of call.remotes(); track remote.id) {
+              <video
+                autoplay
+                playsinline
+                [srcObject]="remote.stream"
+                [muted]="call.deafened() || !audible(remote.id)"
+                aria-label="Remote participant"
+              ></video>
+            }
+          </div>
+          <div class="room-people">
+            @for (p of s.room.people; track p.id) {
+              <span
+                >{{ p.name }}{{ p.voice ? " 🎙" : "" }}
+                @if (p.hand) {
+                  <button
+                    (click)="api.run('speaker', { user: p.id, allowed: true })"
+                    title="Grant speaking (moderators only)"
+                  >
+                    ✋
+                  </button>
+                }
+              </span>
+            }
+          </div>
+          <div class="messages" aria-live="polite">
+            @for (m of s.room.messages; track m.id) {
+              <article>
+                <b>{{ m.name }}</b>
+                <p>{{ m.body }}</p>
+              </article>
+            } @empty {
+              <p>Say hello to the room.</p>
+            }
+          </div>
+          <form class="chat-form" (submit)="form($event, 'chat')">
+            <input
+              name="body"
+              aria-label="Message this room"
+              placeholder="Say something…"
+              required
+              maxlength="1000"
+              autocomplete="off"
+            /><button aria-label="Send message">➤</button>
+          </form>
+          <button (click)="api.run('stand')">Stand / finish action</button>
+        } @else {
+          <p>Enter a home to join its conversation.</p>
+        }
+      </aside>
+    </main>
+  }
+</div>
