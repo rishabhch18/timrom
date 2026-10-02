@@ -24,6 +24,7 @@ The scene never awards currency or writes account state. The server admits room 
 | `community.mjs` | Chat/DMs, audiences/history summaries, ownership offers, listings/reports and lifecycle |
 | `devices.mjs` | Authoritative active device and 30-second reservations |
 | `accounts.mjs` | Local contact challenges, passwords, sessions, reauthentication/reset/export/delete |
+| `age.mjs` | Local birthday fixtures, teen access revocation, ownership freeze and accepted succession |
 | `media.mjs` | Optional SFU grants and actual participant permission reconciliation |
 | `index.mjs` | Loopback HTTP/static hosting and ordered WebSocket delivery |
 
@@ -39,7 +40,9 @@ Never run multiple app server instances against one database as if they shared l
 
 ## Persistence and lifecycle
 
-Accounts use hashed passwords and persisted sessions/challenges. Reauthentication tickets are session-bound and expire after five minutes. Adding a missing contact requires reauthentication plus verification through the labelled local challenge. Changing an existing contact and real provider delivery are outstanding work.
+Accounts use hashed passwords and persisted sessions/challenges. Reauthentication tickets are session-bound and expire after five minutes. Adding or replacing a contact requires recent reauthentication and a code for the new contact. Challenges bind to the requesting session and expected previous contact. Replacement preserves an existing password, invalidates other sessions and pending codes, and issues a fresh session. Delivery remains a labelled local fixture.
+
+New UI signups supply a private birth date. Local fixtures enforce 13+ and transition at midnight India time on the 18th birthday (a February 29 anniversary falls on March 1 in a non-leap year). Legacy band-only test accounts are retained, not assigned invented birthdays. On transition, teen access/roles and cross-band friendships are removed, placed personal items/loans return to inventory, calls and movement end, and teen-owned homes freeze. An eligible teen member must accept an ownership offer before reopening; the former owner can instead explicitly delete the paused home. No teen interior or roster is exposed to the now-adult former owner. These rules are not identity or guardian verification.
 
 Donation/loan offers are pending until accepted by the receiving home's owner/admin. Donations become home-owned; loans remain lender-owned. Home deletion returns loans and surviving donated items to existing original owners without coin refunds; starter/orphaned items retire. Owner transfer requires recipient acceptance. Account deletion first requires transferring or deleting owned homes.
 
@@ -50,6 +53,12 @@ Private room permission and block rules filter state before delivery. History su
 LiveKit grants are derived from current room membership, active device, voice eligibility, mute/video state and speaker role. The service compares actual participants with server-authoritative permissions and removes stale room/device identities. Camera admission is app-wide; unlimited forum entry is separate from media capacity. No audio recording/transcription is implemented.
 
 **Known security limit:** previously issued self-hosted tokens are not immediately invalidated by participant removal. Reconciliation reduces stale access but permits a transient reconnect window. Resolve this explicitly before a public/teen pilot; do not equate the local adapter with a finished revocation design. See LiveKit's [token/grant documentation](https://docs.livekit.io/frontends/reference/tokens-grants/), [server API](https://docs.livekit.io/reference/server-sdk-js/classes/RoomServiceClient.html), and [configuration example](https://github.com/livekit/livekit/blob/master/config-sample.yaml).
+
+## Backup and recovery
+
+`npm run db:backup` uses SQLite's online backup API and checks the result with `PRAGMA integrity_check`. Files are created exclusively with owner-only permissions. The automated test covers a live WAL database, independent reopening, snapshot isolation from later writes, permissions and overwrite refusal. This is a database recovery check, not a full hosted disaster-recovery exercise.
+
+For recovery, stop the app server, preserve the current database and its sidecars, and choose a verified backup. Copy the backup to a **new** path under ignored `data/`, then start one app server with `WORLD_DB` pointing to that copy (and the intended `PORT`). This leaves the original files available for diagnosis and avoids mixing an old database with newer WAL sidecars. Check sign-in, memberships and chat before returning to use. A restored snapshot includes historical sessions and challenges; expire these before restoring into a shared pilot environment. Do not launch a second server against the live file.
 
 ## Verification and environment issue
 

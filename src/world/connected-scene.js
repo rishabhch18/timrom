@@ -1,3 +1,9 @@
+import {
+  FURNITURE,
+  TILE_SIZE,
+  center,
+  rotationOf,
+} from "../shared/furniture.mjs";
 /** The connected scene consumes server snapshots only; it never writes preview storage. */
 export function connectedScene({
   T,
@@ -28,16 +34,7 @@ export function connectedScene({
     targets = [],
     floorTargets = [],
     labels = [];
-  const unit = 0.65;
-  const models = {
-    chair: ["chair", 0.55],
-    sofa: ["loungesofa", 1.25],
-    desk: ["desk", 1.1],
-    plant: ["pottedplant", 0.4],
-    bed: ["beddouble", 1.25],
-    counter: ["kitchencabinet", 0.75],
-    lamp: ["lamproundfloor", 0.4],
-  };
+  const unit = TILE_SIZE;
   function update(s, force = false) {
     snapshot = s;
     const changedHome = home !== s?.scene?.home;
@@ -50,6 +47,7 @@ export function connectedScene({
       [
         s.scene.rooms,
         s.scene.portals,
+        s.me.preferences?.language,
         s.homes.filter((h) => h.member).map((h) => [h.id, h.name]),
       ],
       (k, v) => (k === "count" ? undefined : v),
@@ -125,11 +123,76 @@ export function connectedScene({
                   0.035,
                 );
         }
+        if (r.outdoor) {
+          // A non-blocking path leads to the server's neighbour travel anchor (5,7).
+          for (let row = 1; row <= 7; row++)
+            B(
+              geometry,
+              unit * 0.8,
+              0.025,
+              unit * 0.7,
+              x + 5 * unit,
+              -0.075,
+              z + row * unit,
+              "#EDE3D5",
+              0.03,
+            );
+          for (const gx of [4.2, 5.8])
+            B(
+              geometry,
+              0.12,
+              0.8,
+              0.12,
+              x + gx * unit,
+              0,
+              z + (r.height - 0.3) * unit,
+              "#F4EDE3",
+              0.03,
+            );
+          if (labelHost) {
+            const el = document.createElement("span");
+            el.textContent =
+              s.me.preferences?.language === "hi"
+                ? "पड़ोसी घर"
+                : "Neighbour gate";
+            labelHost.appendChild(el);
+            labels.push({
+              el,
+              point: new T.Vector3(
+                x + 5 * unit,
+                0.9,
+                z + (r.height - 0.3) * unit,
+              ),
+            });
+          }
+        }
         for (const item of r.items) {
-          const spec = models[item.asset] || models.chair;
-          const obj = fitModel(spec[0], spec[1]) || new T.Group();
-          obj.position.set(x + item.x * unit, 0, z + item.y * unit);
-          obj.rotation.y = (item.rotation * Math.PI) / 2;
+          const spec = FURNITURE[item.asset] || FURNITURE.chair;
+          const obj = new T.Group();
+          const model = fitModel(spec.model, spec.width);
+          if (model) obj.add(model);
+          if (item.asset === "desk") {
+            if (model) model.position.z = -unit / 2;
+            const chair = fitModel("chairdesk", 0.38);
+            if (chair) {
+              chair.position.z = unit / 2;
+              chair.rotation.y = Math.PI;
+              obj.add(chair);
+            }
+            for (const [name, width, depth] of [
+              ["computerscreen", 0.45, -0.42],
+              ["computerkeyboard", 0.3, -0.18],
+            ]) {
+              const accessory = fitModel(name, width);
+              if (accessory && model) {
+                accessory.position.set(0, model.userData.size.y, depth);
+                obj.add(accessory);
+              }
+            }
+          }
+          const [cx, cy] = center(item);
+          obj.position.set(x + cx * unit, 0, z + cy * unit);
+          obj.rotation.y = (rotationOf(item) * Math.PI) / 2;
           obj.userData.item = item;
           geometry.add(obj);
           targets.push(obj);
@@ -156,7 +219,7 @@ export function connectedScene({
         controls.minDistance = 8;
         controls.maxDistance = 90;
         controls.target.set(maxX / 2, 0, maxZ / 2);
-        camera.position.set(maxX / 2 + 18, 25, maxZ / 2 + 24);
+        camera.position.set(maxX / 2 + 12, 18, maxZ / 2 + 16);
         camera.lookAt(controls.target);
         follow = true;
       }
@@ -205,17 +268,33 @@ export function connectedScene({
           game: "type",
           eat: "cook",
         }[action] || "idle";
-      actor.resting = action === "sleep" || action === "rest";
+      actor.resting = false;
+      actor.seat = null;
+      actor.actionYaw = null;
       actor.reduced = !!s.me.preferences?.reducedMotion;
       if (action) {
         const item = room.items.find((i) => i.id === person.action.item);
         if (item) {
-          actor.yaw = ((item.rotation || 0) * Math.PI) / 2 + Math.PI;
-          actor.target.set(
-            (room.ox + item.x) * unit,
-            actor.resting ? 0.35 : 0,
-            (room.oy + item.y) * unit + 0.12,
-          );
+          const spec = FURNITURE[item.asset] || FURNITURE.chair;
+          const yaw = (rotationOf(item) * Math.PI) / 2;
+          const [cx, cy] = center(item);
+          actor.resting =
+            item.asset === "bed" && ["rest", "sleep"].includes(action);
+          if (action === "rest" && !actor.resting) actor.mode = "sit";
+          actor.actionYaw =
+            yaw +
+            (item.asset === "desk" || item.asset === "counter" ? Math.PI : 0);
+          // Counters are used from the approach tile; seats and beds have local anchors.
+          if (spec.seat || actor.resting) {
+            const offset =
+              item.asset === "desk" ? unit / 2 : actor.resting ? unit : 0;
+            actor.target.set(
+              (room.ox + cx) * unit + Math.sin(yaw) * offset,
+              actor.resting ? spec.bed + 0.06 : 0,
+              (room.oy + cy) * unit + Math.cos(yaw) * offset,
+            );
+            actor.seat = spec.seat ?? null;
+          }
         }
       }
       if (person.gestureUntil > s.serverTime) actor.mode = "wave";
@@ -238,9 +317,13 @@ export function connectedScene({
       l.el.hidden = p.z > 1;
     }
     for (const actor of people.values()) {
-      const delta = actor.target.clone().sub(actor.root.position),
-        distance = delta.length();
-      actor.walking = distance > 0.025 && !actor.resting;
+      const delta = actor.target.clone().sub(actor.root.position);
+      delta.y = 0;
+      const distance = delta.length();
+      const blend = 1 - Math.exp(-dt * 8);
+      // Stand before leaving furniture. Turn, approach and settle before posing.
+      const ready = Math.abs(actor.root.rotation.x) < 0.12 || actor.resting;
+      actor.walking = distance > 0.025 && ready;
       actor.path = null;
       actor.v = Math.min(1.75, distance / Math.max(dt, 0.001));
       if (actor.walking) {
@@ -248,13 +331,26 @@ export function connectedScene({
         actor.root.position.add(
           delta.multiplyScalar(Math.min(1, (1.75 * dt) / distance)),
         );
-      }
-      if (actor.resting)
-        actor.root.position.lerp(actor.target, 1 - Math.exp(-dt * 6));
-      actor.root.rotation.z +=
-        ((actor.resting ? Math.PI / 2 : 0) - actor.root.rotation.z) *
-        (1 - Math.exp(-dt * 7));
+      } else if (actor.actionYaw !== null) actor.yaw = actor.actionYaw;
+      const lying = actor.resting && distance < 0.08;
+      actor.root.rotation.order = "YXZ";
+      actor.root.rotation.x +=
+        ((lying ? -Math.PI / 2 : 0) - actor.root.rotation.x) * blend;
+      actor.root.rotation.z = 0;
+      actor.root.position.y +=
+        ((lying ? actor.target.y : 0) - actor.root.position.y) * blend;
       animPerson(actor, actor.reduced && !actor.walking ? 0 : dt);
+      if (actor.glb && actor.seat !== null && !actor.walking && !lying) {
+        const hip = actor.glb.m.getObjectByName("leg-left");
+        if (hip) {
+          actor.root.updateMatrixWorld(true);
+          const point = actor.root.worldToLocal(
+            hip.getWorldPosition(new T.Vector3()),
+          );
+          actor.glb.m.position.y +=
+            ((actor.seat + 0.06) / actor.root.scale.y - point.y) * blend;
+        }
+      }
     }
     const me = people.get(snapshot?.me.id);
     if (me && follow) {

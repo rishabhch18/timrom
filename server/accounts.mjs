@@ -1,3 +1,4 @@
+import { ageFixture } from "./age.mjs";
 import {
   randomBytes,
   randomInt,
@@ -124,7 +125,14 @@ export class Accounts {
         if (!matches(d.password, c.password)) fail("Password is incorrect.");
         return this.ticket(user, token);
       }
-      return this.challenge({ purpose: "reauth", user, session: hash(token) });
+      const kind = c.email ? "email" : "phone";
+      return this.challenge({
+        purpose: "reauth",
+        user,
+        session: hash(token),
+        kind,
+        verifiedContact: c[kind],
+      });
     }
     if (action === "reset") {
       const kind = d.kind === "phone" ? "phone" : "email",
@@ -136,7 +144,23 @@ export class Accounts {
         purpose: "reset",
         user: c.user,
         password: passwordHash(d.password),
+        kind,
+        verifiedContact: contact,
       });
+    }
+    if (action === "details") {
+      const user = w.auth(token);
+      if (!user) fail("Sign in first.");
+      return {
+        contacts: w.get(
+          "SELECT email,phone,verification_mode FROM credentials WHERE user=?",
+          user,
+        ),
+        age: w.get(
+          "SELECT birth_date,mode FROM age_profiles WHERE user=?",
+          user,
+        ),
+      };
     }
     if (action === "export" || action === "delete") {
       const user = w.auth(token);
@@ -151,6 +175,10 @@ export class Accounts {
               user,
             ),
             preferences: w.prefs(user),
+            age: w.get(
+              "SELECT birth_date,mode FROM age_profiles WHERE user=?",
+              user,
+            ),
             activities: w.all("SELECT * FROM activities WHERE user=?", user),
             messages: w.all("SELECT * FROM messages WHERE user=?", user),
             directMessages: w.all(
@@ -203,6 +231,7 @@ export class Accounts {
           "blocks",
           "requests",
           "credentials",
+          "age_profiles",
           "auth_sessions",
           "auth_reauth",
         ])
@@ -220,7 +249,11 @@ export class Accounts {
         );
         w.run("DELETE FROM item_offers WHERE sender=?", user);
         w.run("UPDATE item_origins SET donor=NULL WHERE donor=?", user);
-        w.run("DELETE FROM report_reviews WHERE report IN (SELECT id FROM reports WHERE user=? OR target=?)",user,user);
+        w.run(
+          "DELETE FROM report_reviews WHERE report IN (SELECT id FROM reports WHERE user=? OR target=?)",
+          user,
+          user,
+        );
         w.run("DELETE FROM reports WHERE user=? OR target=?", user, user);
         w.run("DELETE FROM blocks WHERE target=?", user);
         w.run("DELETE FROM personal_mutes WHERE target=?", user);
@@ -249,7 +282,11 @@ export class Accounts {
         fail(
           "Username: 3–24 letters, numbers or underscores; start with a letter.",
         );
-      if (!["adult", "teen"].includes(d.band))
+      const age = d.birthDate ? ageFixture(d.birthDate, w.now()) : null;
+      if (age && d.band && age.band !== d.band)
+        fail("Date of birth and age group do not match.");
+      const band = age?.band || d.band;
+      if (!["adult", "teen"].includes(band))
         fail("Choose an age group. Accounts are 13+.");
       const name = String(d.name || "").trim();
       if (name.length < 2 || name.length > 24)
@@ -268,7 +305,8 @@ export class Accounts {
         contact,
         username,
         name,
-        band: d.band,
+        band,
+        age,
         password: kind === "email" ? passwordHash(d.password) : null,
       });
     }
@@ -291,9 +329,14 @@ export class Accounts {
         fail(
           "No local account uses that mobile number. Create an account first.",
         );
-      return this.challenge({ purpose: "login", user: c.user });
+      return this.challenge({
+        purpose: "login",
+        user: c.user,
+        kind: "phone",
+        verifiedContact: phone,
+      });
     }
-    if (action === "link") {
+    if (action === "link" || action === "changeContact") {
       const user = w.auth(token);
       if (!user) fail("Sign in first.");
       this.requireRecent(user, token, d.reauth);
@@ -305,18 +348,24 @@ export class Accounts {
         );
       if (w.get(`SELECT 1 FROM credentials WHERE ${kind}=?`, contact))
         fail("That contact is already registered.");
-      if (
-        w.get(`SELECT ${kind} AS contact FROM credentials WHERE user=?`, user)
-          ?.contact
-      )
+      const existing = w.get("SELECT * FROM credentials WHERE user=?", user);
+      if (action === "link" && existing[kind])
         fail("This contact is already linked.");
+      if (action === "changeContact" && !existing[kind])
+        fail("Add this contact before trying to replace it.");
       w.limit(contact, "send", 3, 60000);
       return this.challenge({
-        purpose: "link",
+        purpose: action,
         user,
         kind,
         contact,
-        password: kind === "email" ? passwordHash(d.password) : null,
+        previous: existing[kind],
+        session: hash(token),
+        ticket: hash(d.reauth),
+        password:
+          kind === "email" && !existing.password
+            ? passwordHash(d.password)
+            : null,
       });
     }
     if (action === "verify") {
@@ -335,8 +384,41 @@ export class Accounts {
       )
         fail("Incorrect verification code.");
       const p = JSON.parse(c.payload);
-      if (["link", "reauth"].includes(p.purpose) && w.auth(token) !== p.user)
+      if (
+        ["link", "changeContact", "reauth"].includes(p.purpose) &&
+        w.auth(token) !== p.user
+      )
         fail("Sign in to the account that requested this code.");
+      if (
+        p.verifiedContact &&
+        w.get(
+          `SELECT ${p.kind} AS contact FROM credentials WHERE user=?`,
+          p.user,
+        )?.contact !== p.verifiedContact
+      )
+        fail("The registered contact changed. Start verification again.");
+      if (["link", "changeContact"].includes(p.purpose)) {
+        if (
+          hash(token) !== p.session ||
+          !w.get(
+            "SELECT 1 FROM auth_reauth WHERE digest=? AND user=? AND session=? AND expires>?",
+            p.ticket,
+            p.user,
+            p.session,
+            w.now(),
+          )
+        )
+          fail("Confirm your identity again before this account change.");
+        if (
+          w.get(
+            `SELECT ${p.kind} AS contact FROM credentials WHERE user=?`,
+            p.user,
+          )?.contact !== p.previous
+        )
+          fail("The registered contact changed. Start verification again.");
+        if (w.get(`SELECT 1 FROM credentials WHERE ${p.kind}=?`, p.contact))
+          fail("That contact is already registered.");
+      }
       return w.tx(() => {
         w.run("DELETE FROM auth_challenges WHERE id=?", c.id);
         let user = p.user;
@@ -353,6 +435,9 @@ export class Accounts {
           );
           w.run("DELETE FROM auth_sessions WHERE user=?", user);
           w.run("DELETE FROM auth_reauth WHERE user=?", user);
+          for (const other of w.all("SELECT id,payload FROM auth_challenges"))
+            if (JSON.parse(other.payload).user === user)
+              w.run("DELETE FROM auth_challenges WHERE id=?", other.id);
           return this.session(user);
         }
         if (p.purpose === "signup") {
@@ -375,13 +460,30 @@ export class Accounts {
           );
           // New accounts authenticate only through expiring hashed sessions.
           w.run("UPDATE users SET token=NULL WHERE id=?", user);
-        } else if (p.purpose === "link") {
+          if (p.age)
+            w.run(
+              "INSERT INTO age_profiles(user,birth_date,adult_at) VALUES(?,?,?)",
+              user,
+              p.age.birthDate,
+              p.age.adultAt,
+            );
+        } else if (p.purpose === "link" || p.purpose === "changeContact") {
           w.run(
             `UPDATE credentials SET ${p.kind}=?, password=COALESCE(?,password) WHERE user=?`,
             p.contact,
             p.password,
             user,
           );
+          if (p.purpose === "changeContact") {
+            w.run("DELETE FROM auth_sessions WHERE user=?", user);
+            w.run("DELETE FROM auth_reauth WHERE user=?", user);
+            for (const challenge of w.all(
+              "SELECT id,payload FROM auth_challenges",
+            ))
+              if (JSON.parse(challenge.payload).user === user)
+                w.run("DELETE FROM auth_challenges WHERE id=?", challenge.id);
+            return { changed: true, ...this.session(user) };
+          }
           return { linked: true };
         }
         return this.session(user);

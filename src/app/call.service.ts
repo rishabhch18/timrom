@@ -22,6 +22,8 @@ export class CallService {
   readonly microphone = signal("");
   readonly cameraDevice = signal("");
   readonly lowBandwidth = signal(false);
+  readonly outputDevice = signal("");
+  readonly supportsOutput = typeof HTMLMediaElement !== "undefined" && typeof HTMLMediaElement.prototype.setSinkId === "function";
   private sfu?: SfuTransport;
   private sfuRoom = "";
   private sfuBusy = false;

@@ -7,18 +7,36 @@ import {
   input,
   output,
   DestroyRef,
+  signal,
 } from "@angular/core";
 import { HeaderComponent } from "./header.component";
 import { WorldComponent } from "./world.component";
 import { WorldState, Item } from "./social.service";
+import { UiTextPipe } from "./ui-text.pipe";
+import { keyboardDestination } from "../shared/navigation.mjs";
 @Component({
   selector: "timrom-connected-world",
-  imports: [HeaderComponent, WorldComponent],
+  imports: [HeaderComponent, WorldComponent, UiTextPipe],
   template: `<timrom-header style="display:none" /><timrom-world />
     <div id="modal" hidden><div id="sheet"></div></div>
     <div id="fx"></div>
     <div class="connected-room-labels"></div>
     <div class="connected-view">
+      @if (activeAction()) {
+        <button
+          [attr.aria-label]="'Stand / finish action' | ui"
+          (click)="command.emit({ type: 'stand', data: {} })"
+        >
+          ↑
+        </button>
+      }
+      <button
+        [attr.aria-label]="'Room furniture' | ui"
+        [attr.aria-expanded]="objectsOpen()"
+        (click)="objectsOpen.set(!objectsOpen())"
+      >
+        ▣
+      </button>
       <button
         title="Show whole home"
         aria-label="Show whole home"
@@ -32,7 +50,17 @@ import { WorldState, Item } from "./social.service";
       >
         ◎
       </button>
-    </div>`,
+    </div>
+    @if (objectsOpen()) {
+      <section class="world-objects" [attr.aria-label]="'Room furniture' | ui">
+        <b>{{ "Room furniture" | ui }}</b>
+        @for (object of roomItems(); track object.id; let i = $index) {
+          <button (click)="choose(object)">
+            {{ object.asset | ui }} {{ i + 1 }}
+          </button>
+        }
+      </section>
+    }`,
   host: {
     class: "connected-world",
     tabindex: "0",
@@ -41,6 +69,19 @@ import { WorldState, Item } from "./social.service";
   },
 })
 export class ConnectedWorldComponent {
+  readonly objectsOpen = signal(false);
+  activeAction() {
+    const s = this.state();
+    return s.scene?.people.find((p) => p.id === s.me.id)?.action;
+  }
+  roomItems() {
+    const s = this.state();
+    return s.scene?.rooms.find((r) => r.id === s.room?.id)?.items || [];
+  }
+  choose(item: Item) {
+    this.item.emit(item);
+    this.objectsOpen.set(false);
+  }
   readonly state = input.required<WorldState>();
   readonly command = output<{ type: string; data: Record<string, unknown> }>();
   readonly item = output<Item>();
@@ -50,7 +91,12 @@ export class ConnectedWorldComponent {
   private disposed = false;
   engine: any;
   constructor() {
-    effect(() => this.engine?.updateConnected(this.state()));
+    effect(() => {
+      // Read the signal before checking the asynchronously mounted engine, so
+      // Angular tracks updates even when the first effect runs before mount.
+      const state = this.state();
+      this.engine?.updateConnected(state);
+    });
     afterNextRender(() => void this.mount());
     this.destroyRef.onDestroy(() => {
       this.disposed = true;
@@ -72,10 +118,8 @@ export class ConnectedWorldComponent {
     if (delta[e.key]) {
       e.preventDefault();
       const [dx, dy] = delta[e.key];
-      this.command.emit({
-        type: "move",
-        data: { room: me.room, x: me.x + dx, y: me.y + dy },
-      });
+      const data = keyboardDestination(s.scene, me, dx, dy);
+      if (data) this.command.emit({ type: "move", data });
     }
     if (e.key.toLowerCase() === "w")
       this.command.emit({ type: "wave", data: {} });

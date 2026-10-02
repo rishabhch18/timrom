@@ -1,3 +1,5 @@
+import { footprint } from "../src/shared/furniture.mjs";
+import { migrateAge, installAge } from "./age.mjs";
 import { installDevices } from "./devices.mjs";
 import { migrateCommunity, installCommunity } from "./community.mjs";
 import { migrateBuilder, installBuilder } from "./builder.mjs";
@@ -41,7 +43,7 @@ export const CATALOG = [
     price: 20,
     level: 1,
     color: "#c39b72",
-    description: "Room for ideas, books and coffee.",
+    description: "A workstation with an integrated chair, screen and keyboard.",
   },
   {
     id: "plant",
@@ -132,6 +134,7 @@ export class World {
     migrateSocial(this);
     migrateBuilder(this);
     migrateCommunity(this);
+    migrateAge(this);
     // A restart ends presence, not the activity record; stale timers are closed at last persisted online tick.
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS runtime(key TEXT PRIMARY KEY,value INTEGER)",
@@ -447,7 +450,7 @@ export class World {
     );
   }
   footprint(item) {
-    return [[item.x, item.y]];
+    return footprint(item);
   }
   path(room, x, y, tx, ty, ignoreSeat = false) {
     const occupied = this.all("SELECT * FROM items WHERE room=?", room);
@@ -959,8 +962,13 @@ export class World {
         assert(
           (item.owner_type === "user" && item.owner === id) ||
             (item.room &&
-              ['owner','admin'].includes(this.role(id,
-                this.get("SELECT home FROM rooms WHERE id=?", item.room).home,item.room))),
+              ["owner", "admin"].includes(
+                this.role(
+                  id,
+                  this.get("SELECT home FROM rooms WHERE id=?", item.room).home,
+                  item.room,
+                ),
+              )),
           "You cannot move this item.",
         );
         this.clearPlacement(item.id);
@@ -1284,3 +1292,5 @@ installBuilder(World);
 installCommunity(World);
 
 installDevices(World);
+
+installAge(World);

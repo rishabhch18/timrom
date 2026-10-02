@@ -1,3 +1,4 @@
+import { approach } from "../src/shared/furniture.mjs";
 import { randomUUID } from "node:crypto";
 import { ACTIONS } from "./connected.mjs";
 const check = (v, m) => {
@@ -27,8 +28,8 @@ export function installBuilder(World) {
     const p = this.presence.get(id),
       r = this.room(id, rid);
     const blocked = new Set(
-      this.all("SELECT x,y FROM items WHERE room=?", rid).map(
-        (i) => `${i.x},${i.y}`,
+      this.all("SELECT * FROM items WHERE room=?", rid).flatMap((i) =>
+        this.footprint(i).map(([x, y]) => `${x},${y}`),
       ),
     );
     for (const [u, v] of this.presence)
@@ -66,7 +67,16 @@ export function installBuilder(World) {
     const row = this.get("SELECT home FROM rooms WHERE id=?", rid);
     const r = this.layout(row.home).find((r) => r.id === rid),
       items = this.all("SELECT * FROM items WHERE room=?", rid);
-    const blocked = new Set(items.map((i) => `${i.x},${i.y}`));
+    const blocked = new Set();
+    for (const item of items)
+      for (const [x, y] of this.footprint(item)) {
+        check(
+          x >= 0 && x < r.width && y >= 0 && y < r.height,
+          "Store furniture outside the proposed room first.",
+        );
+        check(!blocked.has(`${x},${y}`), "Furniture footprints overlap.");
+        blocked.add(`${x},${y}`);
+      }
     const valid = (x, y) =>
       x >= 0 &&
       x < r.width &&
@@ -102,7 +112,7 @@ export function installBuilder(World) {
       );
       if (ACTIONS[i.asset])
         check(
-          reachable(i.x, i.y + 1),
+          reachable(...approach(i)),
           "Keep every furniture approach reachable.",
         );
     }

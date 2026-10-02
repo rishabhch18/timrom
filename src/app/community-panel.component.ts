@@ -23,6 +23,14 @@ import { SocialService } from "./social.service";
                 | ui
             }}
           </p>
+          @if (contactInfo(); as c) {
+            <div class="contact-details">
+              <p>{{ "Email" | ui }}: {{ c["email"] || ("Not linked" | ui) }}</p>
+              <p>
+                {{ "Mobile" | ui }}: {{ c["phone"] || ("Not linked" | ui) }}
+              </p>
+            </div>
+          }
           @if (!reauth()) {
             <form (submit)="accountAction($event, 'reauth')">
               <label
@@ -45,9 +53,21 @@ import { SocialService } from "./social.service";
             </form>
           } @else {
             <p>{{ "Identity confirmed for five minutes." | ui }}</p>
-            <form (submit)="accountAction($event, 'link')">
+            <form (submit)="accountAction($event, contactMode())">
               <label
-                >{{ "Add second contact" | ui
+                >{{ "Contact change" | ui
+                }}<select
+                  [value]="contactMode()"
+                  (change)="contactMode.set($any($event.target).value)"
+                >
+                  <option value="link">{{ "Add second contact" | ui }}</option>
+                  <option value="changeContact">
+                    {{ "Replace existing contact" | ui }}
+                  </option>
+                </select></label
+              >
+              <label
+                >{{ "Contact type" | ui
                 }}<select name="kind">
                   <option value="email">{{ "Email" | ui }}</option>
                   <option value="phone">{{ "Mobile" | ui }}</option>
@@ -55,7 +75,7 @@ import { SocialService } from "./social.service";
               ><label
                 >{{ "Contact" | ui }}<input name="contact" required /></label
               ><label
-                >{{ "Password for new email" | ui
+                >{{ "Password (only when adding your first email)" | ui
                 }}<input
                   name="password"
                   type="password"
@@ -817,6 +837,10 @@ export class CommunityPanelComponent {
     effect(() => {
       const state = this.api.state(),
         panel = this.panel();
+      if (state && panel === "account" && this.contactOwner !== state.me.id) {
+        this.contactOwner = state.me.id;
+        untracked(() => void this.loadContacts());
+      }
       if (!state || panel !== "history") return;
       untracked(() => {
         const day = new Date(state.serverTime);
@@ -832,6 +856,15 @@ export class CommunityPanelComponent {
           .catch(() => {});
       });
     });
+  }
+  private contactOwner = "";
+  readonly contactInfo = signal<Record<string, string | null> | null>(null);
+  readonly contactMode = signal("link");
+  async loadContacts() {
+    try {
+      const r = await this.api.auth("details", {});
+      this.contactInfo.set(r["contacts"]);
+    } catch {}
   }
   readonly recipient = signal("");
   readonly reportTarget = signal("");
@@ -892,11 +925,20 @@ export class CommunityPanelComponent {
         this.authChallenge.set("");
         this.authCode.set("");
         if (result["reauth"]) this.reauth.set(result["reauth"]);
+        if (result["changed"]) this.reauth.set("");
+        if (result["linked"] || result["changed"]) await this.loadContacts();
         this.accountNotice.set(
-          result["linked"] ? "Contact linked." : "Identity confirmed.",
+          result["changed"]
+            ? "Contact changed. Other sessions were signed out."
+            : result["linked"]
+              ? "Contact linked."
+              : "Identity confirmed.",
         );
       }
-    } catch {}
+    } catch (e) {
+      if ((e as Error).message.includes("Confirm your identity"))
+        this.reauth.set("");
+    }
   }
   async exportAccount() {
     try {

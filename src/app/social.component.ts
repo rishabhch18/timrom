@@ -1,3 +1,5 @@
+import { OnboardingComponent } from "./onboarding.component";
+import { MediaOutputDirective } from "./media-output.directive";
 import { UiTextPipe } from "./ui-text.pipe";
 import { BuilderComponent } from "./builder.component";
 import { CommunityPanelComponent } from "./community-panel.component";
@@ -9,6 +11,8 @@ import { ConnectedWorldComponent } from "./connected-world.component";
   selector: "timrom-social",
   imports: [
     UiTextPipe,
+    OnboardingComponent,
+    MediaOutputDirective,
     ConnectedWorldComponent,
     BuilderComponent,
     CommunityPanelComponent,
@@ -19,7 +23,7 @@ export class SocialComponent {
   readonly call = inject(CallService);
   readonly api = inject(SocialService);
   readonly panel = signal("homes");
-  readonly adminHome=signal("");
+  readonly adminHome = signal("");
   readonly signup = signal(false);
   readonly recover = signal(false);
   readonly method = signal("email");
@@ -88,6 +92,16 @@ export class SocialComponent {
         if (state.room) this.panel.set("");
       }
     });
+  }
+  async deletePausedHome(e: Event, home: string) {
+    e.preventDefault();
+    const d = new FormData(e.target as HTMLFormElement);
+    await this.api.run("deleteHome", { home, confirm: d.get("confirm") });
+  }
+  async proposeSuccessor(e: Event, home: string) {
+    e.preventDefault();
+    const d = new FormData(e.target as HTMLFormElement);
+    await this.api.run("transferHome", { home, username: d.get("username") });
   }
   worldCommand(value: { type: string; data: Record<string, unknown> }) {
     const item = this.placement();
@@ -199,11 +213,15 @@ export class SocialComponent {
           chair: ["sit"],
           sofa: ["sit", "rest"],
           bed: ["rest", "sleep"],
-          desk: ["study", "work"],
+          desk: ["study", "work", "game"],
           counter: ["eat"],
         } as Record<string, string[]>
       )[item.asset] || []
     );
+  }
+  currentAction() {
+    const s = this.api.state();
+    return s?.scene?.people.find((p) => p.id === s.me.id)?.action;
   }
   act(action: string) {
     const item = this.selected();

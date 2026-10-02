@@ -15,6 +15,7 @@ export interface Person {
   personalMuted?: boolean;
   role?: string;
   activity?: string;
+  action?: { item: string; kind: string; phase: "approach" | "active" } | null;
   blocked?: boolean;
 }
 export interface Room {
@@ -91,6 +92,7 @@ export interface WorldState {
     preferences: Record<string, any>;
   };
   homes: Home[];
+  frozenHomes: { id: string; name: string; owner: string; reason: string }[];
   room: Room | null;
   scene?: Scene;
   notifications: { id: string; body: string; seen: number; time: number }[];

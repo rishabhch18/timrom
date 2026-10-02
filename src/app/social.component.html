@@ -1,11 +1,13 @@
 <div
-  class="social-app" [attr.lang]="api.language()"
+  class="social-app"
+  [attr.lang]="api.language()"
   [class.reduced-motion]="api.state()?.me?.preferences?.['reducedMotion']"
 >
   <header class="social-top">
     <a class="social-brand" href="/">Timrom<span>.</span></a
     ><span class="local-badge">{{ "Local preview" | ui }}</span>
-    @if (api.state(); as s) {
+    @if (api.state()?.me?.preferences?.["onboarded"]) {
+      @let s = api.state()!;
       <nav aria-label="Home tools">
         <button title="Discover and joined homes" (click)="toggle('homes')">
           🌐</button
@@ -119,14 +121,13 @@
                   maxlength="24"
                   autocomplete="username" /></label
               ><label
-                >{{ "Age group" | ui
-                }}<select name="band">
-                  <option value="adult">{{ "18+ adults" | ui }}</option>
-                  <option value="teen">{{ "13–17 teens" | ui }}</option>
-                </select></label
-              ><small
-                >Local age fixtures only; this is not age verification.</small
-              >
+                >{{ "Date of birth" | ui
+                }}<input name="birthDate" type="date" required
+              /></label>
+              <small>{{
+                "Local age fixture only; this is not identity or guardian verification."
+                  | ui
+              }}</small>
             }
             <label
               >{{ method() === "email" ? "Email" : "Mobile with country code"
@@ -201,6 +202,8 @@
         <span>Gather. Belong. Grow.</span>
       </div>
     </main>
+  } @else if (!api.state()?.me?.preferences?.["onboarded"]) {
+    <main class="onboarding-wrap"><timrom-onboarding /></main>
   } @else {
     @let s = api.state()!;
     @if (s.deviceActive === false) {
@@ -220,6 +223,60 @@
         }}
       }
     </div>
+    @for (h of s.frozenHomes; track h.id) {
+      <section class="succession-notice">
+        <b>{{ h.name }} · {{ "Home paused" | ui }}</b>
+        <p>
+          {{
+            "An eligible member must accept ownership before this home reopens."
+              | ui
+          }}
+        </p>
+        @if (h.owner === s.me.id) {
+          <form (submit)="proposeSuccessor($event, h.id)">
+            <label
+              >{{ "Successor username" | ui
+              }}<input
+                name="username"
+                placeholder="@username"
+                required /></label
+            ><button>{{ "Offer ownership" | ui }}</button>
+          </form>
+          <details>
+            <summary>{{ "Delete home permanently" | ui }}</summary>
+            <p>
+              {{
+                "Borrowed items return to their owners. Home-owned items and room conversations are deleted."
+                  | ui
+              }}
+            </p>
+            <form (submit)="deletePausedHome($event, h.id)">
+              <label
+                >{{ "Type the home name" | ui
+                }}<input name="confirm" required /></label
+              ><button>{{ "Delete home permanently" | ui }}</button>
+            </form>
+          </details>
+        }
+        @for (t of s.transfers; track t.home) {
+          @if (t.home === h.id && t.recipient === s.me.id) {
+            <button
+              (click)="
+                api.run('transferDecision', { home: h.id, accept: true })
+              "
+            >
+              {{ "Accept ownership" | ui }}</button
+            ><button
+              (click)="
+                api.run('transferDecision', { home: h.id, accept: false })
+              "
+            >
+              {{ "Decline" | ui }}
+            </button>
+          }
+        }
+      </section>
+    }
     <main class="social-layout" [class.chat-expanded]="chatExpanded()">
       <section class="world-area">
         @if (s.room) {
@@ -255,9 +312,9 @@
         }
         @if (selected(); as item) {
           <div class="action-menu" role="dialog" aria-label="Furniture actions">
-            <b>{{ item.asset }}</b>
+            <b>{{ item.asset | ui }}</b>
             @for (action of actions(item); track action) {
-              <button (click)="act(action)">{{ action }}</button>
+              <button (click)="act(action)">{{ action | ui }}</button>
             }
             <button (click)="selected.set(null)">×</button>
           </div>
@@ -284,7 +341,10 @@
                 "account",
               ].includes(panel())
             ) {
-              <timrom-community-panel [panel]="panel()" [targetHome]="adminHome()" />
+              <timrom-community-panel
+                [panel]="panel()"
+                [targetHome]="adminHome()"
+              />
             }
             @if (panel() === "builder") {
               <timrom-builder />
@@ -441,7 +501,13 @@
                       <button (click)="enter(h)">
                         {{ h.member ? "Visit home" : "Visit forum" }}
                       </button>
-                      @if(['owner','admin'].includes(h.role)){<button (click)="adminHome.set(h.id);panel.set('homeAdmin')">Manage home</button>}
+                      @if (["owner", "admin"].includes(h.role)) {
+                        <button
+                          (click)="adminHome.set(h.id); panel.set('homeAdmin')"
+                        >
+                          Manage home
+                        </button>
+                      }
                       @if (h.invite) {
                         <p>
                           Invite: <code>{{ h.invite }}</code>
@@ -493,7 +559,7 @@
                   {{ "Account & privacy" | ui }}
                 </button>
                 @if (home()) {
-                  <button (click)="adminHome.set('');panel.set('homeAdmin')">
+                  <button (click)="adminHome.set(''); panel.set('homeAdmin')">
                     {{ "Home rules & management" | ui }}
                   </button>
                 }
@@ -533,6 +599,30 @@
                 >
                 <details>
                   <summary>{{ "Voice & video devices" | ui }}</summary>
+                  <label
+                    >{{ "Audio output" | ui
+                    }}<select
+                      [disabled]="!call.supportsOutput"
+                      [value]="call.outputDevice()"
+                      (change)="
+                        call.outputDevice.set($any($event.target).value)
+                      "
+                    >
+                      <option value="">{{ "System default" | ui }}</option>
+                      @for (d of call.devices(); track d.deviceId) {
+                        @if (d.kind === "audiooutput") {
+                          <option [value]="d.deviceId">
+                            {{ d.label || ("Speaker" | ui) }}
+                          </option>
+                        }
+                      }
+                    </select></label
+                  >
+                  @if (!call.supportsOutput) {
+                    <small>{{
+                      "This browser uses the system audio output." | ui
+                    }}</small>
+                  }
                   <button (click)="call.refreshDevices()">
                     {{ "Refresh devices" | ui }}</button
                   ><label
@@ -653,8 +743,11 @@
                         placeholder="8" /></label
                     ><button>{{ "Add room" | ui }}</button>
                   </form>
-                  @if(home()?.role==='owner'){<button (click)="adminHome.set('');panel.set('homeAdmin')">Manage roles and access</button>}
-
+                  @if (home()?.role === "owner") {
+                    <button (click)="adminHome.set(''); panel.set('homeAdmin')">
+                      Manage roles and access
+                    </button>
+                  }
                 }
               }
               @case ("activities") {
@@ -662,9 +755,7 @@
                 <button (click)="panel.set('history')">
                   {{ "History & day/week totals" | ui }}
                 </button>
-                <form
-                  (submit)="form($event, 'activity')"
-                >
+                <form (submit)="form($event, 'activity')">
                   <label
                     >{{ "Start activity" | ui
                     }}<select name="kind">
@@ -672,7 +763,14 @@
                         <option>{{ kind }}</option>
                       }
                     </select></label
-                  ><label>Audience<select name="visibility"><option value="private">Private</option><option value="friends">Friends</option><option value="home">Home members</option><option value="public">Eligible public viewers</option></select></label><button>{{ "Start activity" | ui }}</button>
+                  ><label
+                    >Audience<select name="visibility">
+                      <option value="private">Private</option>
+                      <option value="friends">Friends</option>
+                      <option value="home">Home members</option>
+                      <option value="public">Eligible public viewers</option>
+                    </select></label
+                  ><button>{{ "Start activity" | ui }}</button>
                 </form>
                 <button (click)="api.run('activityStop')">
                   {{ "Stop activity" | ui }}
@@ -706,6 +804,30 @@
                     {{ item.room ? "Placed" : "Stored" }}
                     <details>
                       <summary>{{ "Voice & video devices" | ui }}</summary>
+                      <label
+                        >{{ "Audio output" | ui
+                        }}<select
+                          [disabled]="!call.supportsOutput"
+                          [value]="call.outputDevice()"
+                          (change)="
+                            call.outputDevice.set($any($event.target).value)
+                          "
+                        >
+                          <option value="">{{ "System default" | ui }}</option>
+                          @for (d of call.devices(); track d.deviceId) {
+                            @if (d.kind === "audiooutput") {
+                              <option [value]="d.deviceId">
+                                {{ d.label || ("Speaker" | ui) }}
+                              </option>
+                            }
+                          }
+                        </select></label
+                      >
+                      @if (!call.supportsOutput) {
+                        <small>{{
+                          "This browser uses the system audio output." | ui
+                        }}</small>
+                      }
                       <button (click)="call.refreshDevices()">
                         {{ "Refresh devices" | ui }}</button
                       ><label
@@ -851,6 +973,7 @@
                 autoplay
                 playsinline
                 [srcObject]="remote.stream"
+                [mediaOutput]="call.outputDevice()"
                 [muted]="call.deafened() || !audible(remote.id)"
                 aria-label="Remote participant"
               ></video>
@@ -942,6 +1065,11 @@
           <button (click)="api.run('stand')">
             {{ "Stand / finish action" | ui }}
           </button>
+          @if (currentAction(); as action) {
+            <small role="status"
+              >{{ action.kind | ui }} · {{ action.phase | ui }}</small
+            >
+          }
         } @else {
           <p>{{ "Enter a home to join its conversation." | ui }}</p>
         }

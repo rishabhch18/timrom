@@ -86,3 +86,101 @@ test("fresh reauthentication protects linking, export and deletion; password res
   );
   assert.equal(w.presence.has(s.user.id), false);
 });
+
+test("verified contact replacement is session-bound, preserves password, revokes old sessions and stale challenges", async (t) => {
+  let now = Date.parse("2026-10-02T00:00:00Z");
+  const w = new World(":memory:", () => now, { seed: false });
+  t.after(() => w.close());
+  const a = new Accounts(w);
+  const q = await a.handle(
+    "signup",
+    {
+      name: "Change QA",
+      username: "changeqa",
+      birthDate: "2000-01-01",
+      kind: "email",
+      contact: "old@example.test",
+      password: "local-original-password",
+    },
+    "test",
+  );
+  const s = await a.handle(
+    "verify",
+    { challenge: q.challenge, code: q.developmentCode },
+    "test",
+  );
+  const r = await a.handle(
+    "reauth",
+    { method: "password", password: "local-original-password" },
+    "test",
+    s.token,
+  );
+  const stale = await a.handle(
+    "reset",
+    {
+      kind: "email",
+      contact: "old@example.test",
+      password: "stale-password-123",
+    },
+    "test",
+  );
+  const change = await a.handle(
+    "changeContact",
+    { kind: "email", contact: "new@example.test", reauth: r.reauth },
+    "test",
+    s.token,
+  );
+  const another = await a.handle(
+    "login",
+    { contact: "old@example.test", password: "local-original-password" },
+    "test",
+  );
+  await assert.rejects(
+    a.handle(
+      "verify",
+      { challenge: change.challenge, code: change.developmentCode },
+      "test",
+      another.token,
+    ),
+    /identity/,
+  );
+  const fresh = await a.handle(
+    "verify",
+    { challenge: change.challenge, code: change.developmentCode },
+    "test",
+    s.token,
+  );
+  assert.equal(fresh.changed, true);
+  assert.equal(w.auth(s.token), undefined);
+  assert.equal(w.auth(another.token), undefined);
+  await assert.rejects(
+    a.handle(
+      "verify",
+      { challenge: stale.challenge, code: stale.developmentCode },
+      "test",
+    ),
+    /expired|unavailable/,
+  );
+  await assert.rejects(
+    a.handle(
+      "login",
+      { contact: "old@example.test", password: "local-original-password" },
+      "test",
+    ),
+    /incorrect/,
+  );
+  assert.ok(
+    (
+      await a.handle(
+        "login",
+        { contact: "new@example.test", password: "local-original-password" },
+        "test",
+      )
+    ).token,
+  );
+  assert.equal(
+    (await a.handle("details", {}, "test", fresh.token)).contacts.email,
+    "new@example.test",
+  );
+  assert.ok(!JSON.stringify(w.snapshot(s.user.id)).includes("2000-01-01"));
+});

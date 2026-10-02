@@ -1,3 +1,4 @@
+import { approach } from "../src/shared/furniture.mjs";
 const check = (ok, message) => {
   if (!ok) throw Error(message);
 };
@@ -5,7 +6,7 @@ export const ACTIONS = {
   chair: ["sit"],
   sofa: ["sit", "rest"],
   bed: ["rest", "sleep"],
-  desk: ["study", "work"],
+  desk: ["study", "work", "game"],
   counter: ["eat"],
 };
 export function migrateConnected(w) {
@@ -81,7 +82,7 @@ export function installConnected(World) {
       this.all(
         "SELECT i.* FROM items i JOIN rooms r ON i.room=r.id WHERE r.home=?",
         start.home,
-      ).map((i) => key(i.room, i.x, i.y)),
+      ).flatMap((i) => this.footprint(i).map(([x, y]) => key(i.room, x, y))),
     );
     for (const [u, v] of this.presence)
       if (u !== id && v.room) obstacles.add(key(v.room, v.x, v.y));
@@ -193,6 +194,7 @@ export function installConnected(World) {
         study: "Studying",
         work: "Working",
         eat: "Eating",
+        game: "Gaming",
       }[a.kind];
       this.startActivity(id, kind, 2);
     }
@@ -213,9 +215,9 @@ export function installConnected(World) {
         const key = nx + "," + ny;
         if (
           nx >= 0 &&
-          nx < rooms.find((v) => v.id === nr).width &&
+          nx < this.get("SELECT width FROM rooms WHERE id=?", room).width &&
           ny >= 0 &&
-          ny < rooms.find((v) => v.id === nr).height &&
+          ny < this.get("SELECT height FROM rooms WHERE id=?", room).height &&
           !blocked.has(key) &&
           !visited.has(key)
         ) {
@@ -323,10 +325,12 @@ export function installConnected(World) {
           "Someone is already using or approaching this object.",
         );
         room = item.room;
-        x = item.x;
-        y = item.y + 1;
+        [x, y] = approach(item);
         check(
-          y < this.room(id, room).height,
+          x >= 0 &&
+            y >= 0 &&
+            x < this.room(id, room).width &&
+            y < this.room(id, room).height,
           "Leave one free tile in front of usable furniture.",
         );
       }
@@ -374,24 +378,45 @@ export function installConnected(World) {
         ].some(([x, y]) => x === d.x && y === d.y),
         "Keep doorways and their approaches clear.",
       );
-      if (ACTIONS[item?.asset])
-        check(
-          d.y < r.height - 1,
-          "Usable furniture needs a free approach tile.",
-        );
       const future = this.all(
         "SELECT * FROM items WHERE room=? AND id<>?",
         r.id,
         d.item,
-      ).concat({ ...item, x: d.x, y: d.y });
+      ).concat({ ...item, x: d.x, y: d.y, rotation: d.rotation || 0 });
+      const occupied = new Set();
       for (const i of future)
-        if (ACTIONS[i.asset])
+        for (const [x, y] of this.footprint(i)) {
+          check(
+            !occupied.has(`${x},${y}`),
+            "Another item occupies that space.",
+          );
+          occupied.add(`${x},${y}`);
+        }
+      for (const i of future)
+        if (ACTIONS[i.asset]) {
+          const [x, y] = approach(i);
+          check(
+            x >= 0 && y >= 0 && x < r.width && y < r.height,
+            "Usable furniture needs a free approach tile.",
+          );
           check(
             !future.some(
-              (j) => j.id !== i.id && j.x === i.x && j.y === i.y + 1,
+              (j) =>
+                j.id !== i.id &&
+                this.footprint(j).some(([a, b]) => a === x && b === y),
             ),
             "Keep furniture approach tiles clear.",
           );
+        }
+      const next = { ...item, x: d.x, y: d.y, rotation: d.rotation || 0 };
+      check(
+        ![...this.presence.values()].some(
+          (v) =>
+            v.room === r.id &&
+            this.footprint(next).some(([x, y]) => x === v.x && y === v.y),
+        ),
+        "Someone is standing there.",
+      );
     }
     if (
       type === "auto" &&
@@ -429,7 +454,9 @@ export function installConnected(World) {
         [...this.presence.entries()].some(
           ([u, v]) => u !== id && v.room === r && v.x === x && v.y === y,
         ) ||
-        this.get("SELECT 1 FROM items WHERE room=? AND x=? AND y=?", r, x, y) ||
+        this.all("SELECT * FROM items WHERE room=?", r).some((i) =>
+          this.footprint(i).some(([a, b]) => a === x && b === y),
+        ) ||
         (r !== p.room &&
           (target.locked ||
             (target.capacity > 0 && this.count(r) >= target.capacity)))

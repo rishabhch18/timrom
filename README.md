@@ -1,6 +1,6 @@
 # Timrom — Angular social homes
 
-One shared Angular frontend and SQLite/WebSocket backend for connected homes, room chat, activity tracking, inventory and moderation. The integrated local app is usable, but the full product is **still in progress**, especially visual/motion fidelity, age/contact workflows and real-device media validation. See [implemented features, test evidence and remaining gaps](docs/INTEGRATION-STATUS.md).
+One shared Angular frontend and SQLite/WebSocket backend for connected homes, room chat, activity tracking, inventory and moderation. The integrated local app is usable, but the full product is **still in progress**, especially visual/motion fidelity, real verification providers and real-device media validation. See [implemented features, test evidence and remaining gaps](docs/INTEGRATION-STATUS.md).
 
 ## Run locally
 
@@ -42,7 +42,7 @@ npm run preview:media # serve built app/API on :3012 with the local SFU config
 
 Set `PORT=4200` to run the built preview at the usual frontend address instead. Stop a development server using that port first. The preview has no hot reload. `npm run server` serves the built app without automatically loading `.env.example`; real deployment configuration is intentionally not supplied.
 
-The connected database is ignored `data/world.sqlite`. Keep backups before migrations; do not commit or share database files, sessions or real contact information. No demo or sibling One World data is imported. Tests use in-memory databases.
+The connected database is ignored `data/world.sqlite`. Run `npm run db:backup` before migrations; it creates an integrity-checked snapshot in ignored `data/backups/`, including committed WAL data, without stopping the server or overwriting earlier backups. Run `npm run db:check -- path/to/backup.sqlite` to check a snapshot. Backups contain private data and sessions: keep them out of Git and shared folders. See [recovery instructions](docs/LOCAL-ARCHITECTURE.md#backup-and-recovery). No demo or sibling One World data is imported. Tests use synthetic in-memory or temporary databases.
 
 For the operator dashboard, configure `TIMROM_OPERATORS` with comma-separated **existing usernames** in your local process environment. A home owner is not automatically a platform operator. See [local architecture and operations](docs/LOCAL-ARCHITECTURE.md).
 
@@ -51,7 +51,7 @@ For the operator dashboard, configure `TIMROM_OPERATORS` with comma-separated **
 | Path | Purpose |
 |---|---|
 | `src/app/` | Angular UI, account state, builder, community panels and calls |
-| `src/shared/` | Ordered WebSocket snapshot deltas, shared with the backend |
+| `src/shared/` | Ordered snapshot deltas, furniture footprints/anchors and keyboard portal resolution |
 | `src/world/connected-scene.js` | Authorized snapshots rendered with the original Timrom assets |
 | `src/world/timrom-engine.js` | Preserved visual-demo scene adapter and asset/animation helpers |
 | `server/` | Accounts, geometry, social permissions, economy, devices and media adapter |
